@@ -1,3 +1,4 @@
+
 (function(){
 'use strict';
 const $=id=>document.getElementById(id);
@@ -35,9 +36,6 @@ function trueWordCount(text){return wordMatches(text).length;}
 function splitSeasonComplete(text){
   const words=wordMatches(text),totalWords=words.length;
   if(!totalWords)return {chunks:[],totalWords:0,complete:text==='',episodeWordTotal:0,firstWordMatch:true,lastWordMatch:true};
-  // Aim for 275 words, keeping episodes in the 250–300 range when the
-  // source length permits it. For short stories, keep one complete episode
-  // rather than create two unusably short fragments.
   let count=totalWords<500?1:Math.max(2,Math.ceil(totalWords/300),Math.round(totalWords/275));
   while(count>1&&Math.floor(totalWords/count)<250)count--;
   while(totalWords>=500&&Math.ceil(totalWords/count)>300)count++;
@@ -66,8 +64,6 @@ function splitSeasonComplete(text){
     chunks.push(text.slice(cursor,pick.pos));cursor=pick.pos;wordCursor=pick.wordIndex;
   }
   if(cursor<text.length)chunks.push(text.slice(cursor));
-  // If a natural boundary produced an out-of-range episode, merge or rebalance
-  // at word boundaries while preserving every character and original ordering.
   const joined=chunks.join(''),episodeWordTotal=chunks.reduce((sum,part)=>sum+trueWordCount(part),0);
   const firstWordMatch=(wordMatches(chunks[0]||'')[0]?.[0]||'')===(words[0]?.[0]||'');
   const lastWords=wordMatches(chunks[chunks.length-1]||'');
@@ -89,7 +85,7 @@ all.forEach(ep=>{const key=String(ep.storyId||ep.seasonTitle||'Story')+'::'+Stri
 el.innerHTML=[...groups.entries()].map(([key,eps])=>{
 eps.sort((a,b)=>(Number(a.episodeNumber)||0)-(Number(b.episodeNumber)||0));
 const first=eps[0],folder=`📁 ${first.seasonTitle||'Story'} · Season ${first.seasonNumber||1}`;
-return `<details class="episode-season-folder" open><summary><b>${esc(folder)}</b><span class="small muted">${eps.length} episode${eps.length===1?'':'s'}</span></summary><div class="episode-folder-items">${eps.map(ep=>`<article class="list-item"><p class="episode-number">📖 ${esc(ep.seasonTitle||'Story')} · S${String(ep.seasonNumber||1).padStart(2,'0')}E${String(ep.episodeNumber||'—').padStart(2,'0')}</p><h3>${esc(ep.title)}</h3><p class="small muted">${(ep.content||'').length.toLocaleString()} characters · ${trueWordCount(ep.content||'').toLocaleString()} words · ${esc(ep.date||'Saved locally')}</p><div class="episode-content-preview">${esc((ep.content||'').slice(0,300))}${(ep.content||'').length>300?'…':''}</div><div class="item-actions"><button class="button primary" data-episode-open="${esc(ep.id)}">Read</button><button class="button ghost" data-episode-edit="${esc(ep.id)}">Rename</button><button class="button ghost" data-episode-delete="${esc(ep.id)}">Delete</button></div></article>`).join('')}</div></details>`;
+return `<details class="episode-season-folder" open><summary><b>${esc(folder)}</b><span class="small muted">${eps.length} episode${eps.length===1?'':'s'}</span></summary><div class="episode-folder-items">${eps.map(ep=>`<article class="list-item"><p class="episode-number">📖 ${esc(ep.seasonTitle||'Story')} · S${String(ep.seasonNumber||1).padStart(2,'0')}E${String(ep.episodeNumber||'—').padStart(2,'0')}</p><h3>${esc(ep.title)}</h3><p class="small muted">${(ep.content||'').length.toLocaleString()} characters · ${trueWordCount(ep.content||'').toLocaleString()} words · ${esc(ep.date||'Saved locally')}</p><div class="episode-content-preview">${esc((ep.content||'').slice(0,300))}${(ep.content||'').length>300?'…':''}</div><div class="item-actions"><button class="button primary" data-episode-post="${esc(ep.id)}">📤 Post / Share</button><button class="button ghost" data-episode-copy="${esc(ep.id)}">📋 Copy text</button><button class="button ghost" data-episode-open="${esc(ep.id)}">Read</button><button class="button ghost" data-episode-edit="${esc(ep.id)}">Rename</button><button class="button ghost" data-episode-delete="${esc(ep.id)}">Delete</button></div></article>`).join('')}</div></details>`;
 }).join('');
 }
 function initEpisodes(){const form=$('splitForm');if(!form)return;const existingEpisodes=get('episodes');let migrated=false;const fixedEpisodes=existingEpisodes.map((ep,i)=>{const story=ep.storyId?storyById(ep.storyId):null;const out={...ep,id:ep.id||uid(),seasonTitle:ep.seasonTitle||story?.title||'Imported season',seasonNumber:ep.seasonNumber||story?.seasonNumber||1,episodeNumber:ep.episodeNumber||i+1};if(!ep.id||!ep.episodeNumber||!ep.seasonTitle)migrated=true;return out;});if(migrated)set('episodes',fixedEpisodes);const select=$('splitStory');renderStorySelect();const params=new URLSearchParams(location.search);if(params.get('story')&&select){select.value=params.get('story');}form.addEventListener('submit',e=>{
@@ -134,6 +130,102 @@ toast('All '+chosen.length+' episodes saved locally.');
 renderSavedEpisodes();
 $('episodePreview').innerHTML='<div class="empty-state">All episodes saved. Coverage was checked before saving.</div>';
 episodeDraft=[];
-});$('episodeSearch')?.addEventListener('input',renderSavedEpisodes);$('savedEpisodeList')?.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const id=b.dataset.episodeOpen||b.dataset.episodeEdit||b.dataset.episodeDelete;const all=get('episodes'),ep=all.find(x=>String(x.id)===String(id));if(!ep)return;if(b.dataset.episodeOpen){readerEpisodeId=ep.id;$('episodeReaderTitle').textContent=ep.title;$('episodeReaderMeta').textContent=`${ep.seasonTitle||'Season'} · Episode ${ep.episodeNumber||'—'} · ${(ep.content||'').length.toLocaleString()} characters`;$('episodeReaderText').textContent=ep.content||'';$('episodeReaderPanel').hidden=false;$('episodeReaderPanel').scrollIntoView({behavior:'smooth'});return;}if(b.dataset.episodeEdit){const title=prompt('Enter a new episode title:',ep.title);if(title===null)return;if(!title.trim()){toast('Episode title cannot be empty.');return;}ep.title=title.trim();set('episodes',all);renderSavedEpisodes();toast('Episode renamed.');return;}if(b.dataset.episodeDelete&&confirm(`Delete “${ep.title}”?`)){set('episodes',all.filter(x=>String(x.id)!==String(id)));renderSavedEpisodes();toast('Episode deleted.');}});$('closeEpisodeReader')?.addEventListener('click',()=>{$('episodeReaderPanel').hidden=true;});renderSavedEpisodes();}
-window.initStage2Stories=initStories;window.initStage2Episodes=initEpisodes;
+});
+$('episodeSearch')?.addEventListener('input',renderSavedEpisodes);
+$('savedEpisodeList')?.addEventListener('click',async e=>{
+const b=e.target.closest('button');
+if(!b)return;
+
+const id=b.dataset.episodeOpen||
+         b.dataset.episodeEdit||
+         b.dataset.episodeDelete||
+         b.dataset.episodeCopy||
+         b.dataset.episodePost;
+
+if(!id)return;
+
+const all=get('episodes');
+const ep=all.find(x=>String(x.id)===String(id));
+if(!ep)return;
+
+const episodeText=String(ep.content||'');
+
+// COPY THE COMPLETE EPISODE
+if(b.dataset.episodeCopy){
+if(!episodeText.trim()){toast('This episode has no text.');return;}
+try{
+await navigator.clipboard.writeText(episodeText);
+toast('Episode copied! Paste it into your WhatsApp Channel.');
+}catch(err){
+const area=document.createElement('textarea');
+area.value=episodeText;
+area.style.position='fixed';
+area.style.opacity='0';
+document.body.appendChild(area);
+area.select();
+const copied=document.execCommand('copy');
+area.remove();
+toast(copied?'Episode copied! Paste it into WhatsApp.':'Copy failed. Open Read and copy the text manually.');
+}
+return;
+}
+
+// SHARE / POST THE EPISODE
+if(b.dataset.episodePost){
+if(!episodeText.trim()){toast('This episode has no text.');return;}
+if(navigator.share){
+try{
+await navigator.share({
+title:ep.title||'Channel Studio Episode',
+text:episodeText
+});
+return;
+}catch(err){
+if(err&&err.name==='AbortError')return;
+}
+}
+try{
+await navigator.clipboard.writeText(episodeText);
+toast('Episode copied. Open WhatsApp and paste it into your Channel.');
+}catch(err){
+toast('Sharing failed. Try the Copy text option.');
+}
+return;
+}
+
+// READ EPISODE
+if(b.dataset.episodeOpen){
+readerEpisodeId=ep.id;
+$('episodeReaderTitle').textContent=ep.title;
+$('episodeReaderMeta').textContent=`${ep.seasonTitle||'Season'} · Episode ${ep.episodeNumber||'—'} · ${(ep.content||'').length.toLocaleString()} characters`;
+$('episodeReaderText').textContent=ep.content||'';
+$('episodeReaderPanel').hidden=false;
+$('episodeReaderPanel').scrollIntoView({behavior:'smooth'});
+return;
+}
+
+// RENAME EPISODE
+if(b.dataset.episodeEdit){
+const title=prompt('Enter a new episode title:',ep.title);
+if(title===null)return;
+if(!title.trim()){toast('Episode title cannot be empty.');return;}
+ep.title=title.trim();
+set('episodes',all);
+renderSavedEpisodes();
+toast('Episode renamed.');
+return;
+}
+
+// DELETE EPISODE
+if(b.dataset.episodeDelete&&confirm(`Delete “${ep.title}”?`)){
+set('episodes',all.filter(x=>String(x.id)!==String(id)));
+renderSavedEpisodes();
+toast('Episode deleted.');
+}
+});
+$('closeEpisodeReader')?.addEventListener('click',()=>{$('episodeReaderPanel').hidden=true;});
+renderSavedEpisodes();
+}
+window.initStage2Stories=initStories;
+window.initStage2Episodes=initEpisodes;
 })();
