@@ -1,0 +1,7 @@
+Channel Studio v14 UI refresh
+- Added top search and three-dot overflow menu to existing HTML pages.
+- Added mobile bottom navigation: Home, Stories, Episodes, Planner, Settings.
+- Added Accounts page for local profile labels.
+- Preserved existing project files and features.
+- Replaced common purple/lavender CSS palette values with warm amber.
+Search currently matches content on the open page. Local profiles are not separate authenticated logins.
