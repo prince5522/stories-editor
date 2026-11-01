@@ -1,32 +1,788 @@
+
 <!doctype html>
 <html lang="en" data-theme="system">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <script src="js/app-shell-behavior.js"></script><meta name="theme-color" content="#101827"><meta name="description" content="Your stories, your schedule, your channel."><title>Home — Channel Studio</title><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="css/styles.css"><link rel="stylesheet" href="css/animations.css">
-<link rel="stylesheet" href="css/themes.css"><link rel="stylesheet" href="css/whatsapp-shell.css"></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+
+  <script src="js/app-shell-behavior.js"></script>
+
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="Channel Studio — Your stories, your schedule, your channel.">
+  <title>Home — Channel Studio</title>
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/animations.css">
+  <link rel="stylesheet" href="css/themes.css">
+  <link rel="stylesheet" href="css/whatsapp-shell.css">
+
+  <style>
+    /* =================================
+       CHANNEL STUDIO HOME REDESIGN
+    ================================= */
+
+    .home-welcome {
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 22px;
+      padding: clamp(23px, 5vw, 38px);
+      min-height: 245px;
+      border: 1px solid #ffffff80;
+      border-radius: 27px;
+      color: #172033;
+      background:
+        radial-gradient(circle at 85% 10%, #ffffffa0, transparent 27%),
+        linear-gradient(120deg, #d8fff1, #e3edff 58%, #fff0dc);
+      box-shadow: 0 18px 45px #24395a12;
+    }
+
+    .home-welcome:after {
+      content: "";
+      position: absolute;
+      width: 230px;
+      height: 230px;
+      right: 90px;
+      bottom: -160px;
+      border: 1px solid #ffffffa0;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .home-welcome-content {
+      position: relative;
+      z-index: 1;
+      max-width: 590px;
+    }
+
+    .home-welcome h1 {
+      margin: 9px 0 12px;
+      font-size: clamp(32px, 5vw, 48px);
+      line-height: 1.06;
+      letter-spacing: -1.8px;
+    }
+
+    .home-welcome h1 span {
+      color: #078c76;
+    }
+
+    .home-welcome-copy {
+      max-width: 440px;
+      margin: 0 0 21px;
+      color: #53647b;
+      font-size: 14px;
+    }
+
+    .home-brand-art {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      width: 145px;
+      height: 145px;
+      flex: 0 0 145px;
+      border-radius: 42px;
+      background: linear-gradient(145deg, #0bc49a, #087dce 70%, #625be8);
+      box-shadow: 0 22px 45px #087dce35;
+      transform: rotate(5deg);
+    }
+
+    .home-brand-art:before {
+      content: "";
+      position: absolute;
+      inset: 9px;
+      border: 1px solid #ffffff65;
+      border-radius: 34px;
+    }
+
+    .home-brand-letters {
+      color: white;
+      font-size: 48px;
+      font-weight: 950;
+      letter-spacing: -5px;
+      text-shadow: 0 5px 15px #003c4c44;
+    }
+
+    .home-brand-caption {
+      position: absolute;
+      bottom: 19px;
+      color: #ffffffd9;
+      font-size: 8px;
+      font-weight: 900;
+      letter-spacing: 2px;
+    }
+
+    .home-status-line {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 11px;
+      margin-bottom: 5px;
+      border: 1px solid #ffffffb8;
+      border-radius: 99px;
+      background: #ffffffa0;
+      color: #087d68;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 1.2px;
+    }
+
+    .home-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 0 4px #10b98120;
+    }
+
+    .home-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 13px;
+      margin: 19px 0;
+    }
+
+    .home-stat {
+      position: relative;
+      overflow: hidden;
+      padding: 18px;
+      border: 1px solid var(--line, #e4e9f2);
+      border-radius: 19px;
+      background: var(--panel, #fff);
+      transition: transform .2s, box-shadow .2s;
+    }
+
+    .home-stat:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 25px #1720330c;
+    }
+
+    .home-stat-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 13px;
+    }
+
+    .home-stat-icon {
+      display: grid;
+      place-items: center;
+      width: 39px;
+      height: 39px;
+      border-radius: 13px;
+      font-size: 19px;
+      background: #e6fff6;
+      color: #078c76;
+    }
+
+    .home-stat:nth-child(2) .home-stat-icon {
+      background: #edf2ff;
+      color: #3767d5;
+    }
+
+    .home-stat:nth-child(3) .home-stat-icon {
+      background: #fff3e4;
+      color: #c47719;
+    }
+
+    .home-stat strong {
+      display: block;
+      font-size: 29px;
+      line-height: 1.1;
+      font-weight: 900;
+      color: var(--text, #172033);
+    }
+
+    .home-stat p {
+      margin: 6px 0 0;
+      font-size: 12px;
+    }
+
+    .home-section {
+      margin-top: 20px;
+      padding: 21px;
+      border: 1px solid var(--line, #e4e9f2);
+      border-radius: 21px;
+      background: var(--panel, #fff);
+    }
+
+    .home-section-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 17px;
+    }
+
+    .home-section-heading h2 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: -.5px;
+    }
+
+    .home-section-heading .eyebrow {
+      margin-bottom: 4px;
+    }
+
+    .home-section-heading .text-link {
+      white-space: nowrap;
+      font-size: 12px;
+    }
+
+    .home-quick-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .home-quick-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      min-width: 0;
+      min-height: 145px;
+      padding: 17px;
+      border: 1px solid var(--line, #e4e9f2);
+      border-radius: 17px;
+      background: var(--bg, #f8fafc);
+      transition: transform .2s, border-color .2s, box-shadow .2s;
+    }
+
+    .home-quick-card:hover {
+      transform: translateY(-3px);
+      border-color: #0bc49a88;
+      box-shadow: 0 10px 25px #0bc49a13;
+    }
+
+    .home-quick-icon {
+      display: grid;
+      place-items: center;
+      width: 43px;
+      height: 43px;
+      margin-bottom: 13px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #e1fff4, #e8efff);
+      font-size: 22px;
+    }
+
+    .home-quick-card b {
+      color: var(--text, #172033);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .home-quick-card small {
+      margin-top: 5px;
+      color: var(--muted, #667085);
+      font-size: 11px;
+    }
+
+    .home-quick-arrow {
+      position: absolute;
+      top: 15px;
+      right: 14px;
+      color: #0ba98a;
+      font-weight: 900;
+    }
+
+    .home-creator {
+      position: relative;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 100% 0%, #0bc49a16, transparent 40%),
+        var(--panel, #fff);
+    }
+
+    .home-creator-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 99px;
+      background: #e7faf5;
+      color: #087d68;
+      font-size: 10px;
+      font-weight: 850;
+    }
+
+    .home-creator .caption-result {
+      border-radius: 15px;
+      line-height: 1.6;
+    }
+
+    .home-footer-brand {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      font-weight: 850;
+    }
+
+    .home-footer-mark {
+      display: inline-grid;
+      place-items: center;
+      width: 23px;
+      height: 23px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #0bc49a, #2879f0);
+      color: white;
+      font-size: 9px;
+      font-weight: 950;
+    }
+
+    /* Dark theme */
+    body[data-theme="dark"] .home-welcome {
+      background:
+        radial-gradient(circle at 85% 10%, #ffffff12, transparent 30%),
+        linear-gradient(120deg, #163e3a, #1b3157 60%, #49331e);
+      border-color: #35465d;
+      color: #f1f5fb;
+    }
+
+    body[data-theme="dark"] .home-welcome h1 span {
+      color: #6de6c7;
+    }
+
+    body[data-theme="dark"] .home-welcome-copy {
+      color: #b9c6d9;
+    }
+
+    body[data-theme="dark"] .home-status-line {
+      background: #202d41;
+      border-color: #35465d;
+      color: #8cf0d8;
+    }
+
+    body[data-theme="dark"] .home-stat {
+      background: var(--panel, #182235);
+    }
+
+    body[data-theme="dark"] .home-stat-icon {
+      background: #173d3a;
+      color: #8cf0d8;
+    }
+
+    body[data-theme="dark"] .home-stat:nth-child(2) .home-stat-icon {
+      background: #1c3152;
+      color: #a9c3ff;
+    }
+
+    body[data-theme="dark"] .home-stat:nth-child(3) .home-stat-icon {
+      background: #49331e;
+      color: #ffcc8a;
+    }
+
+    body[data-theme="dark"] .home-quick-card {
+      background: #142033;
+      border-color: #35465d;
+    }
+
+    body[data-theme="dark"] .home-quick-icon {
+      background: linear-gradient(135deg, #173d3a, #1c3152);
+    }
+
+    body[data-theme="dark"] .home-creator {
+      background:
+        radial-gradient(circle at 100% 0%, #0bc49a20, transparent 40%),
+        var(--panel, #182235);
+    }
+
+    body[data-theme="dark"] .home-creator-label {
+      background: #173d3a;
+      color: #8cf0d8;
+    }
+
+    @media (max-width: 650px) {
+      .home-welcome {
+        min-height: 205px;
+        gap: 10px;
+        padding: 21px;
+        border-radius: 22px;
+      }
+
+      .home-brand-art {
+        width: 85px;
+        height: 85px;
+        flex-basis: 85px;
+        border-radius: 25px;
+      }
+
+      .home-brand-art:before {
+        inset: 6px;
+        border-radius: 19px;
+      }
+
+      .home-brand-letters {
+        font-size: 31px;
+        letter-spacing: -3px;
+      }
+
+      .home-brand-caption {
+        bottom: 10px;
+        font-size: 5px;
+        letter-spacing: 1px;
+      }
+
+      .home-welcome h1 {
+        font-size: clamp(27px, 7vw, 37px);
+        letter-spacing: -1px;
+      }
+
+      .home-welcome-copy {
+        font-size: 12px;
+      }
+
+      .home-stats {
+        gap: 8px;
+      }
+
+      .home-stat {
+        padding: 12px;
+        border-radius: 15px;
+      }
+
+      .home-stat strong {
+        font-size: 23px;
+      }
+
+      .home-stat p {
+        font-size: 10px;
+      }
+
+      .home-stat-icon {
+        width: 33px;
+        height: 33px;
+        font-size: 16px;
+        border-radius: 11px;
+      }
+
+      .home-section {
+        padding: 16px;
+        border-radius: 18px;
+      }
+
+      .home-quick-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 9px;
+      }
+
+      .home-quick-card {
+        min-height: 130px;
+        padding: 13px;
+      }
+
+      .home-section-heading h2 {
+        font-size: 18px;
+      }
+    }
+
+    @media (max-width: 370px) {
+      .home-welcome {
+        grid-template-columns: 1fr;
+      }
+
+      .home-brand-art {
+        position: absolute;
+        right: 17px;
+        top: 17px;
+        width: 58px;
+        height: 58px;
+        min-width: 58px;
+        border-radius: 18px;
+        opacity: .9;
+      }
+
+      .home-brand-art:before {
+        inset: 4px;
+        border-radius: 14px;
+      }
+
+      .home-brand-letters {
+        font-size: 22px;
+      }
+
+      .home-brand-caption {
+        display: none;
+      }
+
+      .home-welcome-content {
+        padding-top: 5px;
+      }
+    }
+  </style>
+</head>
+
 <body data-page="home">
+
 <div class="app-layout">
-<aside class="sidebar"><a class="brand" href="home.html"><span class="brand-mark small-mark">CS</span><span>Channel<span class="brand-accent">Studio</span><small>YOUR CREATOR SPACE</small></span></a><nav class="main-nav" aria-label="Main navigation"><a class="nav-link active" href="home.html"><span>⌂</span><b>Home</b></a>
-<a class="nav-link " href="stories.html"><span>▤</span><b>Stories</b></a>
-<a class="nav-link " href="episodes.html"><span>▥</span><b>Episodes</b></a>
-<a class="nav-link" href="ready-made.html"><span>✍</span><b>Ready-Made Episodes</b></a>
-<a class="nav-link " href="planner.html"><span>◷</span><b>Planner</b></a>
-<a class="nav-link " href="hype.html"><span>↗</span><b>Hype</b></a>
-<a class="nav-link " href="media.html"><span>▣</span><b>Media Library</b></a>
-<a class="nav-link" href="docs.html"><span>📄</span><b>Document Reader</b></a>
-<a class="nav-link " href="channels.html"><span>◎</span><b>Channels</b></a>
-<a class="nav-link" href="complaints.html"><span>⚑</span><b>Complaints</b></a>
-<a class="nav-link" href="reviews.html"><span>★</span><b>Reviews</b></a>
-<a class="nav-link " href="notifications.html"><span>♧</span><b>Alerts</b></a>
-<a class="nav-link " href="backup.html"><span>▣</span><b>Backup</b></a>
-<a class="nav-link " href="settings.html"><span>⚙</span><b>Settings</b></a></nav><div class="sidebar-bottom"><a class="nav-link" href="index.html"><span>↗</span><b>Welcome screen</b></a><p class="small muted">Keep creating. Keep your stories safe.</p></div></aside>
-<div class="main-column"><header class="topbar"><button id="menuToggle" class="icon-button mobile-menu" aria-label="Open menu">☰</button><div><p class="eyebrow">CHANNEL STUDIO</p><p class="topbar-title">Home</p></div><div class="topbar-actions"><button id="quickTheme" class="icon-button" aria-label="Toggle theme" title="Toggle theme">◐</button><a class="avatar-link" href="settings.html" aria-label="Settings">CS</a></div></header>
-<main class="page-content page-enter">
-<section class="hero-card tilt-card"><div><p class="eyebrow">YOUR CREATOR SPACE</p><h1>Make every post <span>count.</span></h1><p class="muted">Keep your story seasons organised and your next post ready.</p><a class="button primary" href="stories.html">Open story library</a></div><div class="hero-orb" aria-hidden="true"><span>✦</span></div></section>
-<section class="stats-grid"><article class="stat-card tilt-card"><span class="stat-icon">▤</span><p class="muted">Saved stories</p><strong id="storyCount">0</strong></article><article class="stat-card tilt-card"><span class="stat-icon">◷</span><p class="muted">Upcoming tasks</p><strong id="taskCount">0</strong></article><article class="stat-card tilt-card"><span class="stat-icon">↗</span><p class="muted">Saved channels</p><strong id="channelCount">0</strong></article></section>
-<section class="section-block"><div class="section-heading"><div><p class="eyebrow">YOUR DAY</p><h2>Upcoming tasks</h2></div><a class="text-link" href="planner.html">View planner →</a></div><div id="homeTasks" class="stack-list"><div class="empty-state">No tasks yet. Add your first posting reminder in Planner.</div></div></section>
-<section class="section-block"><div class="section-heading"><div><p class="eyebrow">QUICK START</p><h2>What are we creating?</h2></div></div><div class="quick-grid"><a class="quick-card" href="docs.html"><span>📄</span><b>Read a document</b><small>PDF, Office & text</small></a><a class="quick-card" href="stories.html"><span>📚</span><b>Import a story</b><small>Build your library</small></a><a class="quick-card" href="planner.html"><span>🗓️</span><b>Plan a post</b><small>Set a reminder</small></a><a class="quick-card" href="hype.html"><span>📣</span><b>Prepare a hype</b><small>Cross-channel promo</small></a><a class="quick-card" href="channels.html"><span>💬</span><b>My channels</b><small>Save channel links</small></a></div></section>
-<section class="section-block creator-lab"><div class="section-heading"><div><p class="eyebrow">A LITTLE CREATOR MAGIC</p><h2>Caption Spark ✨</h2></div><span class="pill">Quick ideas</span></div><p class="muted">Need a caption idea? Pick a mood and generate a fresh starting point you can edit.</p><div class="creator-controls"><label for="captionMood">Post mood</label><select id="captionMood"><option value="hype">Hype & exciting</option><option value="warm">Warm & friendly</option><option value="mystery">Mystery & suspense</option><option value="funny">Funny & playful</option><option value="inspiring">Inspiring</option></select><button class="button primary" id="sparkCaption">Spark a caption ✦</button></div><article class="caption-result" id="captionResult" aria-live="polite">Your next great post starts with one idea. Tap “Spark a caption” to get inspired.</article><div class="row-wrap"><button class="button ghost" id="copyCaption">Copy caption</button><button class="button ghost" id="newCaptionPrompt">Give me a post idea</button></div><p class="small muted" id="captionPrompt"></p></section>
-</main><footer class="app-footer">Made for your stories <span>✦</span> <span class="muted">Local-first • Your content stays yours</span></footer></div></div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <a class="brand" href="home.html">
+      <span class="brand-mark small-mark">CS</span>
+      <span>
+        Channel<span class="brand-accent">Studio</span>
+        <small>YOUR CREATOR SPACE</small>
+      </span>
+    </a>
+
+    <nav class="main-nav" aria-label="Main navigation">
+      <a class="nav-link active" href="home.html"><span>⌂</span><b>Home</b></a>
+      <a class="nav-link" href="stories.html"><span>▤</span><b>Stories</b></a>
+      <a class="nav-link" href="episodes.html"><span>▥</span><b>Episodes</b></a>
+      <a class="nav-link" href="ready-made.html"><span>✍</span><b>Ready-Made Episodes</b></a>
+      <a class="nav-link" href="planner.html"><span>◷</span><b>Planner</b></a>
+      <a class="nav-link" href="hype.html"><span>↗</span><b>Hype</b></a>
+      <a class="nav-link" href="media.html"><span>▣</span><b>Media Library</b></a>
+      <a class="nav-link" href="docs.html"><span>📄</span><b>Document Reader</b></a>
+      <a class="nav-link" href="channels.html"><span>◎</span><b>Channels</b></a>
+      <a class="nav-link" href="complaints.html"><span>⚑</span><b>Complaints</b></a>
+      <a class="nav-link" href="reviews.html"><span>★</span><b>Reviews</b></a>
+      <a class="nav-link" href="notifications.html"><span>♧</span><b>Alerts</b></a>
+      <a class="nav-link" href="backup.html"><span>▣</span><b>Backup</b></a>
+      <a class="nav-link" href="settings.html"><span>⚙</span><b>Settings</b></a>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <a class="nav-link" href="index.html"><span>↗</span><b>Welcome screen</b></a>
+      <p class="small muted">Keep creating. Keep your stories safe.</p>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <div class="main-column">
+
+    <header class="topbar">
+      <button id="menuToggle" class="icon-button mobile-menu" aria-label="Open menu">☰</button>
+
+      <div>
+        <p class="eyebrow">CHANNEL STUDIO</p>
+        <p class="topbar-title">Creator Dashboard</p>
+      </div>
+
+      <div class="topbar-actions">
+        <button id="quickTheme" class="icon-button" aria-label="Toggle theme" title="Toggle theme">◐</button>
+        <a class="avatar-link" href="settings.html" aria-label="Settings">CS</a>
+      </div>
+    </header>
+
+    <main class="page-content page-enter">
+
+      <!-- WELCOME / BRAND HERO -->
+      <section class="home-welcome tilt-card">
+
+        <div class="home-welcome-content">
+          <div class="home-status-line">
+            <span class="home-status-dot"></span>
+            YOUR CREATOR SPACE
+          </div>
+
+          <h1>Make every post <span>count.</span></h1>
+
+          <p class="home-welcome-copy">
+            Your stories, your episodes, your schedule.
+            Everything you need to manage your WhatsApp channels in one place.
+          </p>
+
+          <a class="button primary" href="stories.html">
+            Open story library <span>→</span>
+          </a>
+        </div>
+
+        <!-- Channel Studio brand emblem instead of generic AI sparkle -->
+        <div class="home-brand-art" aria-label="Channel Studio CS logo">
+          <span class="home-brand-letters">CS</span>
+          <span class="home-brand-caption">CHANNEL STUDIO</span>
+        </div>
+
+      </section>
+
+      <!-- STATISTICS -->
+      <section class="home-stats">
+
+        <article class="home-stat tilt-card">
+          <div class="home-stat-top">
+            <span class="home-stat-icon">▤</span>
+            <span class="muted small">LIBRARY</span>
+          </div>
+          <p class="muted">Saved stories</p>
+          <strong id="storyCount">0</strong>
+        </article>
+
+        <article class="home-stat tilt-card">
+          <div class="home-stat-top">
+            <span class="home-stat-icon">◷</span>
+            <span class="muted small">SCHEDULE</span>
+          </div>
+          <p class="muted">Upcoming tasks</p>
+          <strong id="taskCount">0</strong>
+        </article>
+
+        <article class="home-stat tilt-card">
+          <div class="home-stat-top">
+            <span class="home-stat-icon">◎</span>
+            <span class="muted small">NETWORK</span>
+          </div>
+          <p class="muted">Saved channels</p>
+          <strong id="channelCount">0</strong>
+        </article>
+
+      </section>
+
+      <!-- UPCOMING TASKS -->
+      <section class="home-section">
+
+        <div class="home-section-heading">
+          <div>
+            <p class="eyebrow">YOUR DAY</p>
+            <h2>Upcoming tasks</h2>
+          </div>
+
+          <a class="text-link" href="planner.html">View planner →</a>
+        </div>
+
+        <div id="homeTasks" class="stack-list">
+          <div class="empty-state">
+            No tasks yet. Add your first posting reminder in Planner.
+          </div>
+        </div>
+
+      </section>
+
+      <!-- QUICK ACTIONS -->
+      <section class="home-section">
+
+        <div class="home-section-heading">
+          <div>
+            <p class="eyebrow">QUICK START</p>
+            <h2>What are we creating?</h2>
+          </div>
+        </div>
+
+        <div class="home-quick-grid">
+
+          <a class="home-quick-card" href="docs.html">
+            <span class="home-quick-arrow">↗</span>
+            <span class="home-quick-icon">📄</span>
+            <b>Read a document</b>
+            <small>PDF, Office & text</small>
+          </a>
+
+          <a class="home-quick-card" href="stories.html">
+            <span class="home-quick-arrow">↗</span>
+            <span class="home-quick-icon">📚</span>
+            <b>Import a story</b>
+            <small>Build your library</small>
+          </a>
+
+          <a class="home-quick-card" href="planner.html">
+            <span class="home-quick-arrow">↗</span>
+            <span class="home-quick-icon">🗓️</span>
+            <b>Plan a post</b>
+            <small>Set a reminder</small>
+          </a>
+
+          <a class="home-quick-card" href="hype.html">
+            <span class="home-quick-arrow">↗</span>
+            <span class="home-quick-icon">📣</span>
+            <b>Prepare a hype</b>
+            <small>Cross-channel promo</small>
+          </a>
+
+          <a class="home-quick-card" href="channels.html">
+            <span class="home-quick-arrow">↗</span>
+            <span class="home-quick-icon">💬</span>
+            <b>My channels</b>
+            <small>Save channel links</small>
+          </a>
+
+          <a class="home-quick-card" href="media.html">
+            <span class="home-quick-arrow">↗</span>
+            <span class="home-quick-icon">🎬</span>
+            <b>Media library</b>
+            <small>Manage your content</small>
+          </a>
+
+        </div>
+      </section>
+
+      <!-- CAPTION SPARK -->
+      <section class="home-section home-creator creator-lab">
+
+        <div class="home-section-heading">
+          <div>
+            <p class="eyebrow">YOUR CREATIVE CORNER</p>
+            <h2>Caption Spark ✨</h2>
+          </div>
+
+          <span class="home-creator-label">QUICK IDEAS</span>
+        </div>
+
+        <p class="muted">
+          Need a caption idea? Pick a mood and generate a fresh starting
+          point you can edit before sharing with your audience.
+        </p>
+
+        <div class="creator-controls">
+          <label for="captionMood">Post mood</label>
+
+          <select id="captionMood">
+            <option value="hype">Hype & exciting</option>
+            <option value="warm">Warm & friendly</option>
+            <option value="mystery">Mystery & suspense</option>
+            <option value="funny">Funny & playful</option>
+            <option value="inspiring">Inspiring</option>
+          </select>
+
+          <button class="button primary" id="sparkCaption">
+            Spark a caption ✦
+          </button>
+        </div>
+
+        <article class="caption-result" id="captionResult" aria-live="polite">
+          Your next great post starts with one idea.
+          Tap “Spark a caption” to get inspired.
+        </article>
+
+        <div class="row-wrap">
+          <button class="button ghost" id="copyCaption">Copy caption</button>
+          <button class="button ghost" id="newCaptionPrompt">Give me a post idea</button>
+        </div>
+
+        <p class="small muted" id="captionPrompt"></p>
+
+      </section>
+
+    </main>
+
+    <footer class="app-footer">
+      <span class="home-footer-brand">
+        <span class="home-footer-mark">CS</span>
+        Channel Studio
+      </span>
+      <br>
+      <span class="muted small">Made for your stories • Local-first • Your content stays yours</span>
+    </footer>
+
+  </div>
+</div>
+
 <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
-<script src="js/storage.js"></script><script src="js/themes.js"></script><script src="js/transitions.js"></script><script src="js/effects.js"></script><script src="js/notifications.js"></script><script src="js/app.js"></script><script src="js/creator-lab.js"></script>
-<script src="js/whatsapp-shell.js"></script></body></html>
+
+<!-- EXISTING APPLICATION SCRIPTS -->
+<script src="js/storage.js"></script>
+<script src="js/themes.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/effects.js"></script>
+<script src="js/notifications.js"></script>
+<script src="js/app.js"></script>
+<script src="js/creator-lab.js"></script>
+<script src="js/whatsapp-shell.js"></script>
+
+</body>
+</html>
