@@ -1,1 +1,596 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Accounts</title><link rel="stylesheet" href="css/whatsapp-shell.css"></head><body><header class="topbar"><strong>Channel Studio</strong><div class="topbar-actions"></div></header><main><h1>Accounts</h1><p>Add and switch local profiles on this device. These are profile labels, not separate secure sign-ins.</p><form id="f"><input id="n" placeholder="Profile name" required><input id="e" placeholder="Email or label"><button>Add account</button></form><div id="list"></div></main><script>const k='cs_local_profiles',g=()=>JSON.parse(localStorage.getItem(k)||'[]'),s=a=>localStorage.setItem(k,JSON.stringify(a));function d(){let a=g();list.innerHTML=a.map((x,i)=>'<p>'+x.name.replace(/[&<>]/g,'')+' '+(x.active?'(Active)':'')+' <button data-i="'+i+'">Switch</button></p>').join('')}f.onsubmit=e=>{e.preventDefault();let a=g();a.forEach(x=>x.active=false);a.push({name:n.value,email:e.value,active:true});s(a);d()};list.onclick=e=>{if(e.target.dataset.i!==undefined){let a=g();a.forEach((x,i)=>x.active=i==e.target.dataset.i);s(a);d()}};d()</script><script src="js/whatsapp-shell.js"></script></body></html>
+
+<!DOCTYPE html>
+<html lang="en" data-theme="system">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101827">
+
+  <title>Accounts — Channel Studio</title>
+
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/animations.css">
+  <link rel="stylesheet" href="css/themes.css">
+  <link rel="stylesheet" href="css/whatsapp-shell.css">
+
+  <style>
+    .accounts-page {
+      max-width: 900px;
+      margin: auto;
+      padding: 22px 16px 110px;
+    }
+
+    .account-heading {
+      margin-bottom: 22px;
+    }
+
+    .account-heading h1 {
+      margin-bottom: 7px;
+      font-size: clamp(25px, 5vw, 34px);
+    }
+
+    .account-heading p,
+    .muted {
+      color: var(--muted, #8b98a9);
+      line-height: 1.6;
+    }
+
+    .account-panel {
+      border: 1px solid var(--border, rgba(128,128,128,.2));
+      background: var(--card, rgba(128,128,128,.07));
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 18px;
+    }
+
+    .active-profile {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .profile-avatar {
+      width: 58px;
+      height: 58px;
+      flex-shrink: 0;
+      display: grid;
+      place-items: center;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #087f8c, #27b5a5);
+      color: white;
+      font-size: 23px;
+      font-weight: 800;
+    }
+
+    .profile-info {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .profile-info h3 {
+      margin: 0 0 5px;
+      overflow-wrap: anywhere;
+    }
+
+    .profile-info p {
+      margin: 0;
+      overflow-wrap: anywhere;
+      font-size: 13px;
+    }
+
+    .active-label {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 5px 10px;
+      border-radius: 30px;
+      background: rgba(28, 180, 130, .14);
+      color: #20b889;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .section-title {
+      margin: 0 0 15px;
+      font-size: 17px;
+    }
+
+    .account-form {
+      display: grid;
+      gap: 12px;
+    }
+
+    .account-form input,
+    .account-search {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 14px;
+      border: 1px solid var(--border, rgba(128,128,128,.25));
+      border-radius: 12px;
+      background: var(--input-bg, transparent);
+      color: var(--text, inherit);
+      font: inherit;
+      outline: none;
+    }
+
+    .account-form input:focus,
+    .account-search:focus {
+      border-color: #19a99c;
+    }
+
+    .account-button {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .primary-button {
+      background: linear-gradient(135deg, #087f8c, #20b6a4);
+      color: white;
+    }
+
+    .secondary-button {
+      background: var(--button-bg, rgba(128,128,128,.14));
+      color: var(--text, inherit);
+    }
+
+    .danger-button {
+      background: rgba(220, 60, 75, .12);
+      color: #e35b68;
+    }
+
+    .account-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .account-card {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      padding: 14px;
+      border: 1px solid var(--border, rgba(128,128,128,.2));
+      border-radius: 16px;
+      background: var(--card, rgba(128,128,128,.05));
+    }
+
+    .account-card .profile-avatar {
+      width: 47px;
+      height: 47px;
+      border-radius: 14px;
+      font-size: 19px;
+    }
+
+    .account-card-info {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .account-card-info strong {
+      display: block;
+      overflow-wrap: anywhere;
+    }
+
+    .account-card-info small {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted, #8b98a9);
+      overflow-wrap: anywhere;
+    }
+
+    .account-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      justify-content: flex-end;
+    }
+
+    .account-actions button {
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+
+    .empty-state {
+      padding: 25px 12px;
+      text-align: center;
+      color: var(--muted, #8b98a9);
+    }
+
+    .account-notice {
+      display: none;
+      padding: 12px;
+      margin-bottom: 15px;
+      border-radius: 12px;
+      background: rgba(28, 180, 130, .12);
+      color: #20b889;
+      font-size: 13px;
+    }
+
+    .account-note {
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--muted, #8b98a9);
+    }
+
+    @media (max-width: 520px) {
+      .account-card {
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .account-actions {
+        width: 100%;
+        justify-content: flex-start;
+        padding-left: 60px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header class="topbar">
+    <strong>Channel Studio</strong>
+    <div class="topbar-actions"></div>
+  </header>
+
+  <main class="accounts-page">
+
+    <div class="account-heading">
+      <p class="muted">PERSONAL WORKSPACE</p>
+      <h1>👤 Account Management</h1>
+      <p>Manage your Channel Studio profiles and switch between them.</p>
+    </div>
+
+    <div id="notice" class="account-notice" role="status"></div>
+
+    <section class="account-panel">
+      <h2 class="section-title">Current profile</h2>
+
+      <div class="active-profile">
+        <div class="profile-avatar" id="activeAvatar">CS</div>
+
+        <div class="profile-info">
+          <h3 id="activeName">No active profile</h3>
+          <p class="muted" id="activeEmail">Create a profile to get started.</p>
+          <span class="active-label" id="activeStatus">LOCAL PROFILE</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="account-panel">
+      <h2 class="section-title" id="formTitle">＋ Add another profile</h2>
+
+      <form class="account-form" id="accountForm">
+        <input
+          type="text"
+          id="profileName"
+          placeholder="Profile name"
+          maxlength="60"
+          required
+        >
+
+        <input
+          type="text"
+          id="profileEmail"
+          placeholder="Email or profile label (optional)"
+          maxlength="100"
+        >
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="account-button primary-button" type="submit" id="saveButton">
+            Add profile
+          </button>
+
+          <button class="account-button secondary-button" type="button" id="cancelEdit" hidden>
+            Cancel
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <section class="account-panel">
+      <h2 class="section-title">Your saved profiles</h2>
+
+      <input
+        class="account-search"
+        id="profileSearch"
+        type="search"
+        placeholder="Search profiles..."
+        aria-label="Search profiles"
+      >
+
+      <div class="account-list" id="accountList"></div>
+    </section>
+
+    <p class="account-note">
+      ℹ️ These are local profiles saved on this device. They are not separate
+      secure sign-ins, and they do not yet isolate stories, episodes or planner
+      data. Supabase account authentication and data separation will be added
+      when the existing Supabase connection is available.
+    </p>
+
+  </main>
+
+  <script src="js/storage.js"></script>
+  <script>
+    (() => {
+      'use strict';
+
+      const STORAGE_KEY = 'cs_local_profiles';
+      const form = document.getElementById('accountForm');
+      const nameInput = document.getElementById('profileName');
+      const emailInput = document.getElementById('profileEmail');
+      const list = document.getElementById('accountList');
+      const searchInput = document.getElementById('profileSearch');
+      const notice = document.getElementById('notice');
+
+      let editingId = null;
+
+      function getProfiles() {
+        try {
+          const profiles = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+          return Array.isArray(profiles) ? profiles : [];
+        } catch {
+          return [];
+        }
+      }
+
+      function saveProfiles(profiles) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
+          return true;
+        } catch {
+          showNotice('Could not save profiles. Check your device storage.');
+          return false;
+        }
+      }
+
+      function createId() {
+        return 'profile-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+      }
+
+      function safeText(value) {
+        return String(value ?? '');
+      }
+
+      function escapeHTML(value) {
+        return safeText(value).replace(/[&<>"']/g, char => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        })[char]);
+      }
+
+      function initials(name) {
+        const parts = safeText(name).trim().split(/\s+/).filter(Boolean);
+        return parts.slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'CS';
+      }
+
+      function showNotice(message) {
+        notice.textContent = message;
+        notice.style.display = 'block';
+
+        clearTimeout(showNotice.timer);
+        showNotice.timer = setTimeout(() => {
+          notice.style.display = 'none';
+        }, 3500);
+      }
+
+      function activeProfile(profiles) {
+        return profiles.find(profile => profile.active) || null;
+      }
+
+      function render() {
+        const profiles = getProfiles();
+        const active = activeProfile(profiles);
+
+        document.getElementById('activeAvatar').textContent =
+          active ? initials(active.name) : 'CS';
+
+        document.getElementById('activeName').textContent =
+          active ? active.name : 'No active profile';
+
+        document.getElementById('activeEmail').textContent =
+          active ? (active.email || 'No profile label added') : 'Create a profile to get started.';
+
+        document.getElementById('activeStatus').textContent =
+          active ? '✓ ACTIVE PROFILE' : 'NO PROFILE SELECTED';
+
+        const query = searchInput.value.trim().toLowerCase();
+
+        const filtered = profiles.filter(profile =>
+          safeText(profile.name).toLowerCase().includes(query) ||
+          safeText(profile.email).toLowerCase().includes(query)
+        );
+
+        if (!filtered.length) {
+          list.innerHTML = '<div class="empty-state">' +
+            (profiles.length ? 'No matching profiles found.' : '👤 No profiles yet. Add your first profile above.') +
+            '</div>';
+          return;
+        }
+
+        list.innerHTML = filtered.map(profile => {
+          const isActive = !!profile.active;
+
+          return `
+            <article class="account-card">
+              <div class="profile-avatar">${escapeHTML(initials(profile.name))}</div>
+
+              <div class="account-card-info">
+                <strong>${escapeHTML(profile.name)}</strong>
+                <small>${escapeHTML(profile.email || 'No profile label')}</small>
+                ${isActive ? '<span class="active-label">ACTIVE</span>' : ''}
+              </div>
+
+              <div class="account-actions">
+                ${!isActive ? `
+                  <button class="account-button primary-button"
+                    data-action="switch" data-id="${escapeHTML(profile.id)}">
+                    Switch
+                  </button>
+                ` : ''}
+
+                <button class="account-button secondary-button"
+                  data-action="edit" data-id="${escapeHTML(profile.id)}">
+                  Edit
+                </button>
+
+                <button class="account-button danger-button"
+                  data-action="delete" data-id="${escapeHTML(profile.id)}">
+                  Delete
+                </button>
+              </div>
+            </article>
+          `;
+        }).join('');
+      }
+
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+
+        const name = nameInput.value.trim();
+        const email = emailInput.value.trim();
+
+        if (!name) {
+          showNotice('Please enter a profile name.');
+          return;
+        }
+
+        const profiles = getProfiles();
+
+        if (editingId) {
+          const profile = profiles.find(item => item.id === editingId);
+
+          if (!profile) {
+            showNotice('That profile could not be found.');
+            resetForm();
+            return;
+          }
+
+          profile.name = name;
+          profile.email = email;
+
+          if (!saveProfiles(profiles)) return;
+
+          showNotice('Profile updated successfully.');
+        } else {
+          const profile = {
+            id: createId(),
+            name,
+            email,
+            active: profiles.length === 0,
+            createdAt: new Date().toISOString()
+          };
+
+          profiles.push(profile);
+
+          if (!saveProfiles(profiles)) return;
+
+          showNotice('Profile added successfully.');
+        }
+
+        resetForm();
+        render();
+      });
+
+      list.addEventListener('click', event => {
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+
+        const { action, id } = button.dataset;
+        const profiles = getProfiles();
+        const index = profiles.findIndex(profile => profile.id === id);
+
+        if (index === -1) return;
+
+        if (action === 'switch') {
+          profiles.forEach(profile => {
+            profile.active = profile.id === id;
+          });
+
+          if (saveProfiles(profiles)) {
+            showNotice('Active profile switched.');
+            render();
+          }
+        }
+
+        if (action === 'edit') {
+          const profile = profiles[index];
+
+          editingId = id;
+          nameInput.value = profile.name || '';
+          emailInput.value = profile.email || '';
+
+          document.getElementById('formTitle').textContent = '✏️ Edit profile';
+          document.getElementById('saveButton').textContent = 'Save changes';
+          document.getElementById('cancelEdit').hidden = false;
+
+          nameInput.focus();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        if (action === 'delete') {
+          const profile = profiles[index];
+
+          if (!confirm(`Delete the local profile "${profile.name}"? This cannot be undone.`)) {
+            return;
+          }
+
+          const wasActive = !!profile.active;
+          profiles.splice(index, 1);
+
+          if (wasActive && profiles.length) {
+            profiles[0].active = true;
+          }
+
+          if (saveProfiles(profiles)) {
+            showNotice('Profile deleted.');
+            resetForm();
+            render();
+          }
+        }
+      });
+
+      function resetForm() {
+        editingId = null;
+        form.reset();
+
+        document.getElementById('formTitle').textContent = '＋ Add another profile';
+        document.getElementById('saveButton').textContent = 'Add profile';
+        document.getElementById('cancelEdit').hidden = true;
+      }
+
+      document.getElementById('cancelEdit').addEventListener('click', resetForm);
+      searchInput.addEventListener('input', render);
+
+      // Upgrade older profiles that did not have unique IDs.
+      const existing = getProfiles();
+      let changed = false;
+
+      existing.forEach(profile => {
+        if (!profile.id) {
+          profile.id = createId();
+          changed = true;
+        }
+      });
+
+      if (existing.length && !existing.some(profile => profile.active)) {
+        existing[0].active = true;
+        changed = true;
+      }
+
+      if (changed) saveProfiles(existing);
+
+      render();
+    })();
+  </script>
+
+  <script src="js/whatsapp-shell.js"></script>
+</body>
+</html>
