@@ -1,7 +1,10 @@
 
-/* Channel Studio v14 service worker
-   Versioned shell cache refreshes updated HTML/CSS/JS assets. */
-const CACHE = 'channel-studio-shell-v15';
+/* =========================================
+   CHANNEL STUDIO v16
+   Instant offline startup + background updates
+========================================= */
+
+const CACHE = 'channel-studio-shell-v16';
 
 const CORE = [
   './',
@@ -53,25 +56,51 @@ const CORE = [
   'assets/icons/icon-512.png'
 ];
 
+/* =========================================
+   INSTALL
+   Download the latest available app shell.
+========================================= */
+
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
 
-    await Promise.all(CORE.map(async path => {
-      try {
-        await cache.add(new Request(path, { cache: 'reload' }));
-      } catch (error) {
-        console.warn(
-          '[Channel Studio] Could not precache:',
-          path,
-          error
-        );
-      }
-    }));
+    await Promise.all(
+      CORE.map(async path => {
+        try {
+          const request = new Request(path, {
+            cache: 'reload'
+          });
+
+          const response = await fetch(request);
+
+          if (response.ok) {
+            await cache.put(request, response);
+          } else {
+            console.warn(
+              '[Channel Studio] Precache failed:',
+              path,
+              response.status
+            );
+          }
+        } catch (error) {
+          console.warn(
+            '[Channel Studio] Could not precache:',
+            path,
+            error
+          );
+        }
+      })
+    );
 
     await self.skipWaiting();
   })());
 });
+
+/* =========================================
+   ACTIVATE
+   Remove old shell caches.
+========================================= */
 
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
@@ -87,14 +116,108 @@ self.addEventListener('activate', event => {
     );
 
     await self.clients.claim();
+
+    console.log('[Channel Studio] v16 activated');
   })());
 });
+
+/* =========================================
+   MANUAL UPDATE MESSAGE
+========================================= */
 
 self.addEventListener('message', event => {
   if (event.data === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
+
+/* =========================================
+   BACKGROUND CACHE REFRESH
+========================================= */
+
+async function refreshCache(request) {
+  try {
+    const response = await fetch(request, {
+      cache: 'no-cache'
+    });
+
+    if (response && response.ok) {
+      const cache = await caches.open(CACHE);
+      await cache.put(request, response.clone());
+    }
+  } catch (error) {
+    // Offline or connection unavailable.
+    // Keep the existing cached version.
+  }
+}
+
+/* =========================================
+   FETCH
+   Return cached content immediately.
+   Refresh it in the background when online.
+========================================= */
+
+self.addEventListener('fetch', event => {
+  const request = event.request;
+
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+
+  if (url.origin !== self.location.origin) return;
+
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+
+    // 1. Look for an instant cached response.
+    const cached = await cache.match(request, {
+      ignoreSearch: true
+    });
+
+    if (cached) {
+      // 2. Refresh in the background.
+      event.waitUntil(refreshCache(request));
+
+      // 3. Return the cached response immediately.
+      return cached;
+    }
+
+    // 4. If not cached, try the network.
+    try {
+      const response = await fetch(request);
+
+      if (response && response.ok) {
+        await cache.put(request, response.clone());
+      }
+
+      return response;
+    } catch (error) {
+      // 5. Offline navigation fallback.
+      if (request.mode === 'navigate') {
+        const fallback =
+          await cache.match('index.html') ||
+          await cache.match('./');
+
+        if (fallback) return fallback;
+      }
+
+      return new Response(
+        'You are offline. This item has not been saved for offline use yet.',
+        {
+          status: 503,
+          statusText: 'Offline',
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8'
+          }
+        }
+      );
+    }
+  })());
+});
+
+/* =========================================
+   NOTIFICATION CLICK
+========================================= */
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
@@ -124,71 +247,6 @@ self.addEventListener('notificationclick', event => {
 
     if (self.clients.openWindow) {
       await self.clients.openWindow(target);
-    }
-  })());
-});
-
-self.addEventListener('fetch', event => {
-  const request = event.request;
-
-  if (request.method !== 'GET') return;
-
-  const url = new URL(request.url);
-
-  if (url.origin !== self.location.origin) return;
-
-  const isAsset = /\.(css|js)$/i.test(url.pathname);
-
-  /* CSS and JavaScript: network first, cache fallback. */
-  if (isAsset) {
-    event.respondWith((async () => {
-      const cache = await caches.open(CACHE);
-
-      try {
-        const fresh = await fetch(request, {
-          cache: 'no-cache'
-        });
-
-        if (fresh && fresh.ok) {
-          await cache.put(request, fresh.clone());
-        }
-
-        return fresh;
-      } catch (error) {
-        const cached = await cache.match(request);
-
-        if (cached) return cached;
-
-        throw error;
-      }
-    })());
-
-    return;
-  }
-
-  /* Other resources: cache first, then network. */
-  event.respondWith((async () => {
-    const cached = await caches.match(request);
-
-    if (cached) return cached;
-
-    try {
-      const response = await fetch(request);
-
-      if (response && response.ok) {
-        const cache = await caches.open(CACHE);
-        await cache.put(request, response.clone());
-      }
-
-      return response;
-    } catch (error) {
-      if (request.mode === 'navigate') {
-        return (
-          await caches.match('index.html')
-        ) || Response.error();
-      }
-
-      throw error;
     }
   })());
 });
