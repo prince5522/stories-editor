@@ -1,9 +1,128 @@
 
-(()=>{const f=(location.pathname.split('/').pop()||'index.html').toLowerCase();
-const items=[['index.html','Home','⌂'],['stories.html','Stories','▤'],['episodes.html','Episodes','▥'],['planner.html','Planner','◷'],['settings.html','Settings','⚙']];
-const h=document.querySelector('.topbar');
-if(h){const actions=h.querySelector('.topbar-actions')||h; if(!h.querySelector('.wa-search-wrap')){const w=document.createElement('div');w.className='wa-search-wrap';w.innerHTML='<span class="wa-search-icon">⌕</span><input class="wa-search" type="search" placeholder="Search Channel Studio">';h.insertBefore(w,actions===h?null:actions);w.querySelector('input').addEventListener('input',e=>search(e.target.value))}
-if(!h.querySelector('.wa-menu-wrap')){const w=document.createElement('div');w.className='wa-menu-wrap';w.innerHTML='<button class="icon-button wa-menu-button" aria-label="More options">⋮</button><div class="wa-overflow" hidden><a href="accounts.html">♙ &nbsp; Accounts</a><a href="channels.html">◎ &nbsp; Channels</a><a href="notifications.html">♧ &nbsp; Notifications</a><a href="backup.html">▣ &nbsp; Backup & restore</a><a href="settings.html">⚙ &nbsp; Settings</a></div>';const b=w.querySelector('button'),m=w.querySelector('.wa-overflow');b.onclick=e=>{e.stopPropagation();m.hidden=!m.hidden};document.addEventListener('click',e=>{if(!w.contains(e.target))m.hidden=true});actions.append(w)}}
-if(!document.querySelector('.wa-bottom-nav')){const n=document.createElement('nav');n.className='wa-bottom-nav';n.setAttribute('aria-label','Main navigation');items.forEach(([u,l,i])=>{const a=document.createElement('a');a.href=u;a.className=f===u?'active':'';a.innerHTML='<span class="wa-nav-icon">'+i+'</span>'+l;n.append(a)});document.body.append(n)}
-function search(q){document.querySelectorAll('.wa-search-results').forEach(x=>x.remove());q=q.trim().toLowerCase();if(!q)return;const matches=[...document.querySelectorAll('main h1,main h2,main h3,main p,main .card,main .list-item,main button')].filter(x=>(x.innerText||'').toLowerCase().includes(q)).slice(0,12);const box=document.createElement('div');box.className='wa-search-results';if(!matches.length)box.textContent='No matches on this page.';matches.forEach(x=>{const a=document.createElement('a');a.href='#';a.textContent=x.innerText.trim().slice(0,130);a.onclick=e=>{e.preventDefault();x.scrollIntoView({behavior:'smooth',block:'center'});box.remove()};box.append(a)});document.body.append(box)}
+(()=>{
+  'use strict';
+
+  const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+
+  // Main app navigation — Home must open home.html, not index.html.
+  const items = [
+    ['home.html', 'Home', '⌂'],
+    ['stories.html', 'Stories', '▤'],
+    ['episodes.html', 'Episodes', '▥'],
+    ['planner.html', 'Planner', '◷'],
+    ['settings.html', 'Settings', '⚙']
+  ];
+
+  // Never add app navigation to the welcome screen.
+  if (document.body.classList.contains('welcome-page') || page === 'index.html') {
+    document.querySelectorAll('.wa-bottom-nav, .wa-search-results').forEach(el => el.remove());
+    return;
+  }
+
+  const header = document.querySelector('.topbar');
+
+  if (header) {
+    const actions = header.querySelector('.topbar-actions') || header;
+
+    // Search
+    if (!header.querySelector('.wa-search-wrap')) {
+      const wrap = document.createElement('div');
+      wrap.className = 'wa-search-wrap';
+      wrap.innerHTML =
+        '<span class="wa-search-icon">⌕</span>' +
+        '<input class="wa-search" type="search" placeholder="Search Channel Studio">';
+
+      header.insertBefore(wrap, actions === header ? null : actions);
+
+      wrap.querySelector('input').addEventListener('input', event => {
+        search(event.target.value);
+      });
+    }
+
+    // Three-dot menu
+    if (!header.querySelector('.wa-menu-wrap')) {
+      const wrap = document.createElement('div');
+      wrap.className = 'wa-menu-wrap';
+
+      wrap.innerHTML =
+        '<button class="icon-button wa-menu-button" aria-label="More options">⋮</button>' +
+        '<div class="wa-overflow" hidden>' +
+          '<a href="accounts.html">♙ &nbsp; Accounts</a>' +
+          '<a href="channels.html">◎ &nbsp; Channels</a>' +
+          '<a href="notifications.html">♧ &nbsp; Notifications</a>' +
+          '<a href="backup.html">▣ &nbsp; Backup & restore</a>' +
+          '<a href="settings.html">⚙ &nbsp; Settings</a>' +
+        '</div>';
+
+      const button = wrap.querySelector('button');
+      const menu = wrap.querySelector('.wa-overflow');
+
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        menu.hidden = !menu.hidden;
+      });
+
+      document.addEventListener('click', event => {
+        if (!wrap.contains(event.target)) menu.hidden = true;
+      });
+
+      actions.append(wrap);
+    }
+  }
+
+  // Bottom navigation
+  if (!document.querySelector('.wa-bottom-nav')) {
+    const nav = document.createElement('nav');
+    nav.className = 'wa-bottom-nav';
+    nav.setAttribute('aria-label', 'Main navigation');
+
+    items.forEach(([url, label, symbol]) => {
+      const link = document.createElement('a');
+      link.href = url;
+      link.className = page === url ? 'active' : '';
+      link.innerHTML =
+        '<span class="wa-nav-icon">' + symbol + '</span>' + label;
+      nav.append(link);
+    });
+
+    document.body.append(nav);
+  }
+
+  function search(query) {
+    document.querySelectorAll('.wa-search-results').forEach(el => el.remove());
+
+    query = query.trim().toLowerCase();
+    if (!query) return;
+
+    const matches = [
+      ...document.querySelectorAll(
+        'main h1, main h2, main h3, main p, main .card, main .list-item, main button'
+      )
+    ].filter(element =>
+      (element.innerText || '').toLowerCase().includes(query)
+    ).slice(0, 12);
+
+    const box = document.createElement('div');
+    box.className = 'wa-search-results';
+
+    if (!matches.length) {
+      box.textContent = 'No matches on this page.';
+    }
+
+    matches.forEach(element => {
+      const link = document.createElement('a');
+      link.href = '#';
+      link.textContent = element.innerText.trim().slice(0, 130);
+
+      link.addEventListener('click', event => {
+        event.preventDefault();
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        box.remove();
+      });
+
+      box.append(link);
+    });
+
+    document.body.append(box);
+  }
 })();
