@@ -1,10 +1,10 @@
 
-(()=>{
+(() => {
   'use strict';
 
   const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
 
-  // Main app navigation — Home must open home.html, not index.html.
+  // Main bottom navigation
   const items = [
     ['home.html', 'Home', '⌂'],
     ['stories.html', 'Stories', '▤'],
@@ -13,9 +13,12 @@
     ['settings.html', 'Settings', '⚙']
   ];
 
-  // Never add app navigation to the welcome screen.
-  if (document.body.classList.contains('welcome-page') || page === 'index.html') {
-    document.querySelectorAll('.wa-bottom-nav, .wa-search-results').forEach(el => el.remove());
+  // Keep the welcome screen free of the app taskbar.
+  if (
+    document.body.classList.contains('welcome-page') ||
+    page === 'index.html'
+  ) {
+    document.querySelectorAll('.wa-bottom-nav').forEach(el => el.remove());
     return;
   }
 
@@ -24,15 +27,25 @@
   if (header) {
     const actions = header.querySelector('.topbar-actions') || header;
 
-    // Search
+    // Search bar
     if (!header.querySelector('.wa-search-wrap')) {
       const wrap = document.createElement('div');
       wrap.className = 'wa-search-wrap';
-      wrap.innerHTML =
-        '<span class="wa-search-icon">⌕</span>' +
-        '<input class="wa-search" type="search" placeholder="Search Channel Studio">';
 
-      header.insertBefore(wrap, actions === header ? null : actions);
+      wrap.innerHTML = `
+        <span class="wa-search-icon">⌕</span>
+        <input
+          class="wa-search"
+          type="search"
+          placeholder="Search Channel Studio"
+          aria-label="Search Channel Studio"
+        >
+      `;
+
+      header.insertBefore(
+        wrap,
+        actions === header ? null : actions
+      );
 
       wrap.querySelector('input').addEventListener('input', event => {
         search(event.target.value);
@@ -44,15 +57,19 @@
       const wrap = document.createElement('div');
       wrap.className = 'wa-menu-wrap';
 
-      wrap.innerHTML =
-        '<button class="icon-button wa-menu-button" aria-label="More options">⋮</button>' +
-        '<div class="wa-overflow" hidden>' +
-          '<a href="accounts.html">♙ &nbsp; Accounts</a>' +
-          '<a href="channels.html">◎ &nbsp; Channels</a>' +
-          '<a href="notifications.html">♧ &nbsp; Notifications</a>' +
-          '<a href="backup.html">▣ &nbsp; Backup & restore</a>' +
-          '<a href="settings.html">⚙ &nbsp; Settings</a>' +
-        '</div>';
+      wrap.innerHTML = `
+        <button class="icon-button wa-menu-button" aria-label="More options">
+          ⋮
+        </button>
+
+        <div class="wa-overflow" hidden>
+          <a href="accounts.html">♙ &nbsp; Accounts</a>
+          <a href="channels.html">◎ &nbsp; Channels</a>
+          <a href="notifications.html">♧ &nbsp; Notifications</a>
+          <a href="backup.html">▣ &nbsp; Backup & restore</a>
+          <a href="settings.html">⚙ &nbsp; Settings</a>
+        </div>
+      `;
 
       const button = wrap.querySelector('button');
       const menu = wrap.querySelector('.wa-overflow');
@@ -63,44 +80,56 @@
       });
 
       document.addEventListener('click', event => {
-        if (!wrap.contains(event.target)) menu.hidden = true;
+        if (!wrap.contains(event.target)) {
+          menu.hidden = true;
+        }
       });
 
       actions.append(wrap);
     }
   }
 
-  // Bottom navigation
+  // Create bottom taskbar
   if (!document.querySelector('.wa-bottom-nav')) {
     const nav = document.createElement('nav');
+
     nav.className = 'wa-bottom-nav';
     nav.setAttribute('aria-label', 'Main navigation');
 
     items.forEach(([url, label, symbol]) => {
       const link = document.createElement('a');
+
       link.href = url;
       link.className = page === url ? 'active' : '';
-      link.innerHTML =
-        '<span class="wa-nav-icon">' + symbol + '</span>' + label;
+
+      link.innerHTML = `
+        <span class="wa-nav-icon">${symbol}</span>
+        ${label}
+      `;
+
       nav.append(link);
     });
 
     document.body.append(nav);
   }
 
+  // Page search
   function search(query) {
     document.querySelectorAll('.wa-search-results').forEach(el => el.remove());
 
     query = query.trim().toLowerCase();
+
     if (!query) return;
 
     const matches = [
       ...document.querySelectorAll(
         'main h1, main h2, main h3, main p, main .card, main .list-item, main button'
       )
-    ].filter(element =>
-      (element.innerText || '').toLowerCase().includes(query)
-    ).slice(0, 12);
+    ]
+      .filter(element =>
+        (element.innerText || '').toLowerCase().includes(query)
+      )
+      .slice(0, 12);
 
     const box = document.createElement('div');
     box.className = 'wa-search-results';
@@ -111,12 +140,18 @@
 
     matches.forEach(element => {
       const link = document.createElement('a');
+
       link.href = '#';
       link.textContent = element.innerText.trim().slice(0, 130);
 
       link.addEventListener('click', event => {
         event.preventDefault();
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+
         box.remove();
       });
 
