@@ -33,3 +33,281 @@ html, body { touch-action: pan-x pan-y; overscroll-behavior-x: none; }
 .episode-folder-items{padding-top:8px}
 .due-post-panel{margin-top:18px}
 .due-post-copy{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;padding:12px;border-radius:12px;background:var(--surface,rgba(127,140,160,.08))}
+
+/* =========================================
+   CHANNEL STUDIO — ACCOUNTS & SWITCH ACCOUNT
+========================================= */
+
+.accounts-section,
+.account-section,
+.switch-account-section {
+  position: relative;
+  overflow: hidden;
+  padding: 20px;
+  border: 1px solid var(--line, #e4e9f2);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 100% 0%, #0bc49a18, transparent 38%),
+    linear-gradient(135deg, var(--panel, #fff), var(--bg, #f4f7fb));
+  box-shadow: 0 12px 35px #1720330a;
+}
+
+.accounts-section h2,
+.account-section h2,
+.switch-account-section h2 {
+  font-weight: 850;
+  letter-spacing: -.4px;
+}
+
+/* Account list */
+.account-list,
+.accounts-list,
+.switch-account-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 15px;
+}
+
+/* Individual account */
+.account-item,
+.account-card,
+.switch-account-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line, #e4e9f2);
+  border-radius: 17px;
+  background: var(--panel, #fff);
+  transition: transform .2s ease, border-color .2s ease,
+              box-shadow .2s ease;
+}
+
+.account-item:hover,
+.account-card:hover,
+.switch-account-item:hover {
+  transform: translateY(-2px);
+  border-color: #0bc49a88;
+  box-shadow: 0 10px 25px #0bc49a16;
+}
+
+/* Account initials / avatar */
+.account-avatar,
+.account-icon,
+.account-initials {
+  display: grid;
+  place-items: center;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #0bc49a, #2879f0);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+  box-shadow: 0 7px 18px #087dce26;
+}
+
+/* SS brand mark, when used as the account logo */
+.account-avatar.ss,
+.account-icon.ss,
+.ss-account-mark {
+  background: linear-gradient(135deg, #08b995, #087dce 65%, #7258e8);
+  color: #fff;
+  letter-spacing: -1px;
+  font-weight: 950;
+}
+
+/* Account details */
+.account-details,
+.account-info {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.account-details strong,
+.account-info strong {
+  color: var(--text, #172033);
+  font-size: 14px;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.account-details small,
+.account-info small {
+  color: var(--muted, #667085);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* Active account */
+.account-item.active,
+.account-card.active,
+.switch-account-item.active,
+.account-item[aria-current="true"],
+.account-card[aria-current="true"] {
+  border: 1.5px solid #0bc49a;
+  background: linear-gradient(110deg, #e9fff7, #eef5ff);
+  box-shadow: 0 8px 24px #0bc49a18;
+}
+
+.account-active-badge,
+.active-account-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 99px;
+  background: #d9f9ed;
+  color: #087d68;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+/* Switch account button */
+.switch-account-button,
+.account-switch-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 13px;
+  border: 1px solid #0bc49a55;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #e7fff6, #eaf2ff);
+  color: #087d68;
+  font-size: 12px;
+  font-weight: 850;
+  transition: .2s ease;
+}
+
+.switch-account-button:hover,
+.account-switch-button:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(135deg, #0bc49a, #087dce);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* Add account */
+.add-account-button,
+.account-add-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 13px;
+  padding: 12px;
+  border: 1.5px dashed #0bc49a99;
+  border-radius: 14px;
+  background: #0bc49a09;
+  color: #078c76;
+  font-weight: 850;
+  transition: .2s ease;
+}
+
+.add-account-button:hover,
+.account-add-button:hover {
+  background: #0bc49a18;
+  border-color: #087dce;
+  transform: translateY(-1px);
+}
+
+/* Account menu / popup */
+.account-menu,
+.switch-account-menu,
+.account-dropdown {
+  padding: 12px;
+  border: 1px solid var(--line, #e4e9f2);
+  border-radius: 18px;
+  background: var(--panel, #fff);
+  box-shadow: 0 18px 50px #1720331c;
+}
+
+/* Dark theme */
+body[data-theme="dark"] .accounts-section,
+body[data-theme="dark"] .account-section,
+body[data-theme="dark"] .switch-account-section {
+  background:
+    radial-gradient(circle at 100% 0%, #0bc49a20, transparent 40%),
+    linear-gradient(135deg, #182235, #142033);
+}
+
+body[data-theme="dark"] .account-item,
+body[data-theme="dark"] .account-card,
+body[data-theme="dark"] .switch-account-item,
+body[data-theme="dark"] .account-menu,
+body[data-theme="dark"] .switch-account-menu,
+body[data-theme="dark"] .account-dropdown {
+  background: #1b2a40;
+  border-color: #35465d;
+}
+
+body[data-theme="dark"] .account-item.active,
+body[data-theme="dark"] .account-card.active,
+body[data-theme="dark"] .switch-account-item.active,
+body[data-theme="dark"] .account-item[aria-current="true"],
+body[data-theme="dark"] .account-card[aria-current="true"] {
+  background: linear-gradient(110deg, #173d3a, #1c3152);
+  border-color: #0bc49a;
+}
+
+body[data-theme="dark"] .account-details strong,
+body[data-theme="dark"] .account-info strong {
+  color: #f1f5fb;
+}
+
+body[data-theme="dark"] .switch-account-button,
+body[data-theme="dark"] .account-switch-button {
+  background: linear-gradient(135deg, #173d3a, #1c3152);
+  color: #8cf0d8;
+  border-color: #286b60;
+}
+
+body[data-theme="dark"] .add-account-button,
+body[data-theme="dark"] .account-add-button {
+  background: #0bc49a12;
+  color: #8cf0d8;
+  border-color: #287d6d;
+}
+
+/* Small screens */
+@media (max-width: 520px) {
+  .accounts-section,
+  .account-section,
+  .switch-account-section {
+    padding: 15px;
+    border-radius: 18px;
+  }
+
+  .account-item,
+  .account-card,
+  .switch-account-item {
+    gap: 10px;
+    padding: 11px;
+  }
+
+  .account-avatar,
+  .account-icon,
+  .account-initials {
+    flex-basis: 42px;
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+  }
+
+  .account-active-badge,
+  .active-account-badge {
+    font-size: 9px;
+    padding: 4px 7px;
+  }
+}
+
