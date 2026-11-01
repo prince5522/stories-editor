@@ -63,12 +63,10 @@
   function write(data) {
     try {
       const result = store().set(KEY, data);
-
       if (result === false) {
-        toast('Could not save planner settings. Check available storage.');
+        toast('Could not save planner settings. Device storage may be full.');
         return false;
       }
-
       return true;
     } catch (error) {
       console.error('Could not save story planner:', error);
@@ -109,9 +107,18 @@
     return store().get('readyMadeEpisodes', []) || [];
   }
 
+  // Matches the actual Channels page structure:
+  // { name, role, url, date }
+
   function channels() {
     const saved = store().get('channels', []);
-    return Array.isArray(saved) ? saved : [];
+    return Array.isArray(saved)
+      ? saved.filter(channel =>
+          channel &&
+          typeof channel === 'object' &&
+          String(channel.url || '').trim()
+        )
+      : [];
   }
 
   function storyLabel(story) {
@@ -120,7 +127,7 @@
 
   function serialChoices() {
     return serialStories()
-      .filter(story => story.id !== undefined && story.id !== null)
+      .filter(story => story.id)
       .map(story => ({
         id: String(story.id),
         title: storyLabel(story)
@@ -160,7 +167,7 @@
   }
 
   function episodeId(ep) {
-    return String(ep.id ?? '');
+    return String(ep.id || '');
   }
 
   function isCompleted(ep, data) {
@@ -176,8 +183,7 @@
     return serialEpisodes()
       .filter(ep =>
         String(ep.storyId || '') === storyId &&
-        ep.id !== undefined &&
-        ep.id !== null &&
+        ep.id &&
         !isCompleted(ep, data)
       )
       .sort(episodeSort)[0] || null;
@@ -190,8 +196,7 @@
     return readyEpisodes()
       .filter(ep =>
         String(ep.story_title || ep.storyName || '').trim() === storyName &&
-        ep.id !== undefined &&
-        ep.id !== null &&
+        ep.id &&
         ep.status !== 'posted' &&
         !isCompleted(ep, data)
       )
@@ -233,44 +238,12 @@
 
   // CHANNELS
 
-  function validChannels() {
-    return channels().filter(channel =>
-      channel &&
-      typeof channel === 'object' &&
-      String(channel.url || '').trim() !== ''
-    );
-  }
-
   function channelName(url) {
-    const item = validChannels().find(channel =>
-      String(channel.url).trim() === String(url || '').trim()
+    const item = channels().find(channel =>
+      String(channel.url || '').trim() === String(url || '').trim()
     );
 
     return item?.name || url || 'No channel selected';
-  }
-
-  function channelOptions(selectedUrl) {
-    const selected = String(selectedUrl || '').trim();
-
-    let html = `
-      <option value="" ${selected ? '' : 'selected'}>
-        Choose a saved WhatsApp Channel
-      </option>
-    `;
-
-    validChannels().forEach(channel => {
-      const url = String(channel.url).trim();
-      const name = String(channel.name || url);
-      const isSelected = url === selected;
-
-      html += `
-        <option value="${esc(url)}" ${isSelected ? 'selected' : ''}>
-          ${esc(name)}
-        </option>
-      `;
-    });
-
-    return html;
   }
 
   function options(items, selected, emptyLabel) {
@@ -281,7 +254,7 @@
         ${esc(emptyLabel)}
       </option>
     ` + items.map(item => {
-      const value = String(item.id ?? '');
+      const value = String(item.id || '');
 
       return `
         <option value="${esc(value)}" ${value === selectedValue ? 'selected' : ''}>
@@ -330,12 +303,10 @@
         color:inherit;
       }
 
-      #storySlotPlanner select option {
-        background:var(--card, #fff);
-        color:var(--text, #111);
+      #storySlotPlanner select {
+        min-height:44px;
+        cursor:pointer;
       }
-
-      #storySlotPlanner textarea { min-height:85px; }
 
       #storySlotPlanner button {
         margin:5px 5px 5px 0;
@@ -363,6 +334,10 @@
         border-radius:9px;
         background:var(--surface, #8882);
         margin:10px 0;
+      }
+
+      #storySlotPlanner .ssp-channel-selected {
+        overflow-wrap:anywhere;
       }
     `;
 
@@ -396,6 +371,11 @@
 
     const data = read();
 
+    const savedChannels = channels().map(channel => ({
+      id: String(channel.url).trim(),
+      title: String(channel.name || channel.url).trim()
+    }));
+
     const slotsHtml = slotDefinitions().map(def => {
       const slot = data.slots[def.id];
 
@@ -405,6 +385,14 @@
 
       const selectedStory = choices.find(choice =>
         String(choice.id) === String(slot.storyId)
+      );
+
+      const slotChannelOptions = options(
+        savedChannels,
+        slot.channelUrl,
+        savedChannels.length
+          ? 'Choose a saved WhatsApp Channel'
+          : 'No saved channels — add one in Channels'
       );
 
       return `
@@ -426,7 +414,7 @@
           <label>
             WhatsApp Channel
             <select data-setting="channelUrl">
-              ${channelOptions(slot.channelUrl)}
+              ${slotChannelOptions}
             </select>
           </label>
 
@@ -500,8 +488,9 @@
     `;
 
     // IMPORTANT:
-    // Channel selection is saved without rebuilding the panel.
-    // This prevents the selected option from disappearing on mobile.
+    // Save the changed setting without rebuilding the panel.
+    // Rebuilding the panel while a select is changing can make
+    // mobile browsers lose the user's selection.
 
     panel.querySelectorAll('[data-slot]').forEach(card => {
       card.querySelectorAll('[data-setting]').forEach(input => {
@@ -511,15 +500,13 @@
           const key = input.dataset.setting;
           const value = input.value;
 
-          if (!updated.slots[slotId]) return;
-
           updated.slots[slotId][key] = value;
 
           if (!write(updated)) return;
 
           if (key === 'channelUrl') {
-            const selected = validChannels().find(channel =>
-              String(channel.url).trim() === String(value).trim()
+            const selected = channels().find(channel =>
+              String(channel.url || '').trim() === String(value).trim()
             );
 
             const label = card.querySelector('.ssp-channel-selected');
@@ -527,7 +514,7 @@
             if (label) {
               label.textContent = selected
                 ? `Selected channel: ${selected.name || selected.url}`
-                : 'Selected channel: No channel selected';
+                : 'No channel selected';
             }
 
             const status = card.querySelector('.ssp-status');
@@ -536,17 +523,39 @@
               status.textContent = slotStatus(slotId, updated.slots[slotId], updated);
             }
 
-            toast(selected
-              ? `${selected.name || 'Channel'} saved for ${slotId} slot.`
-              : `Channel selection cleared for ${slotId} slot.`
-            );
-
-            // Do not call render() here.
-            // The dropdown must remain untouched after selection.
             return;
           }
 
-          render();
+          if (key === 'storyId') {
+            const status = card.querySelector('.ssp-status');
+
+            if (status) {
+              status.textContent = slotStatus(slotId, updated.slots[slotId], updated);
+            }
+
+            const storyLabelElement = card.querySelector('.ssp-muted');
+
+            if (storyLabelElement) {
+              const definition = slotDefinitions().find(item => item.id === slotId);
+              const choices = definition.type === 'ready'
+                ? readyChoices()
+                : serialChoices();
+
+              const selectedStory = choices.find(choice =>
+                String(choice.id) === String(value)
+              );
+
+              storyLabelElement.textContent = selectedStory
+                ? `Assigned to: ${selectedStory.title}`
+                : 'Choose a story to activate this slot.';
+            }
+
+            return;
+          }
+
+          if (key === 'time') {
+            toast('Posting time saved.');
+          }
         });
       });
     });
@@ -563,9 +572,9 @@
       updated.adText = $('sspAdText').value;
       updated.mediaId = $('sspMedia').value;
 
-      write(updated);
-      toast('Story planner settings saved.');
-      render();
+      if (write(updated)) {
+        toast('Story planner settings saved.');
+      }
     });
 
     loadMediaOptions();
@@ -586,7 +595,7 @@
       ? (ep.episode_name || `Episode ${ep.episode_number || ''}`)
       : (ep.title || `Episode ${ep.episodeNumber || ''}`);
 
-    return `Next episode: ${esc(name)} · Ready for its scheduled slot.`;
+    return `Next episode: ${name} · Ready for its scheduled slot.`;
   }
 
   // MEDIA LIBRARY
@@ -622,6 +631,8 @@
         .getAll();
 
       request.onsuccess = () => {
+        if (!$('sspMedia')) return;
+
         const images = (request.result || [])
           .filter(item => item.kind === 'image');
 
@@ -643,11 +654,7 @@
         });
 
         previewPoster();
-        db.close();
       };
-
-      request.onerror = () => db.close();
-
     } catch (error) {
       console.warn('Could not load poster images:', error);
       select.innerHTML = '<option value="">Media Library unavailable</option>';
@@ -680,24 +687,18 @@
 
       request.onsuccess = () => {
         const item = request.result;
+        if (!item?.blob) return;
 
-        if (item?.blob) {
-          mediaUrl = URL.createObjectURL(item.blob);
+        mediaUrl = URL.createObjectURL(item.blob);
 
-          box.innerHTML = `
-            <img
-              class="ssp-poster"
-              src="${mediaUrl}"
-              alt="Advertisement poster preview"
-            >
-          `;
-        }
-
-        db.close();
+        box.innerHTML = `
+          <img
+            class="ssp-poster"
+            src="${mediaUrl}"
+            alt="Advertisement poster preview"
+          >
+        `;
       };
-
-      request.onerror = () => db.close();
-
     } catch (error) {
       console.warn('Poster preview failed:', error);
     }
@@ -743,7 +744,6 @@
       if (now < due || data.lastRun[key]) continue;
 
       const ep = nextEpisode(slot, data);
-
       if (!ep) continue;
 
       return {
@@ -1064,7 +1064,6 @@
         data.pending = pending;
         write(data);
       }
-
       return;
     }
 
@@ -1092,8 +1091,8 @@
     });
 
     if (scheduleTimer) clearInterval(scheduleTimer);
-
     scheduleTimer = setInterval(checkSchedule, 15000);
+
     checkSchedule();
 
     window.addEventListener('pagehide', () => {
