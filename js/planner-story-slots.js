@@ -1,4 +1,3 @@
-
 (function () {
   'use strict';
 
@@ -63,10 +62,12 @@
   function write(data) {
     try {
       const result = store().set(KEY, data);
+
       if (result === false) {
         toast('Could not save planner settings. Device storage may be full.');
         return false;
       }
+
       return true;
     } catch (error) {
       console.error('Could not save story planner:', error);
@@ -107,11 +108,9 @@
     return store().get('readyMadeEpisodes', []) || [];
   }
 
-  // Matches the actual Channels page structure:
-  // { name, role, url, date }
-
   function channels() {
     const saved = store().get('channels', []);
+
     return Array.isArray(saved)
       ? saved.filter(channel =>
           channel &&
@@ -178,6 +177,7 @@
 
   function nextSerial(slot, data) {
     const storyId = String(slot.storyId || '');
+
     if (!storyId) return null;
 
     return serialEpisodes()
@@ -191,6 +191,7 @@
 
   function nextReady(slot, data) {
     const storyName = String(slot.storyId || '').trim();
+
     if (!storyName) return null;
 
     return readyEpisodes()
@@ -487,11 +488,6 @@
       </div>
     `;
 
-    // IMPORTANT:
-    // Save the changed setting without rebuilding the panel.
-    // Rebuilding the panel while a select is changing can make
-    // mobile browsers lose the user's selection.
-
     panel.querySelectorAll('[data-slot]').forEach(card => {
       card.querySelectorAll('[data-setting]').forEach(input => {
         input.addEventListener('change', () => {
@@ -758,18 +754,49 @@
     return null;
   }
 
+  // POSTING-TIME ALERT
+
   function checkSchedule() {
     const data = read();
 
+    // Do not interrupt an advertisement/episode already in progress.
     if (data.pending) return;
 
     const due = findDueSlot(data);
     if (!due) return;
 
+    const episode = due.episode;
+
+    const episodeName = due.slot.type === 'ready'
+      ? (
+          episode.episode_name ||
+          `Episode ${episode.episode_number || ''}`
+        )
+      : (
+          episode.title ||
+          `Episode ${episode.episodeNumber || ''}`
+        );
+
+    const selectedStory = due.slot.type === 'ready'
+      ? (
+          episode.story_title ||
+          episode.storyName ||
+          due.slot.storyId
+        )
+      : (
+          episode.storyTitle ||
+          episode.seasonTitle ||
+          storyLabel(
+            serialStories().find(story =>
+              String(story.id) === String(due.slot.storyId)
+            ) || {}
+          )
+        );
+
     data.pending = {
       slotId: due.id,
       dateKey: due.dateKey,
-      episodeId: episodeId(due.episode),
+      episodeId: episodeId(episode),
       episodeType: due.slot.type,
       channelUrl: due.slot.channelUrl,
       stage: 'advert',
@@ -777,10 +804,31 @@
       startedAt: new Date().toISOString()
     };
 
-    write(data);
+    if (!write(data)) return;
+
     renderPending();
 
-    toast('A story slot is ready. Open the Daily Story Planner to continue.');
+    const message =
+      `It's time to post ${episodeName} from ${selectedStory}. ` +
+      `Open Story Studio to copy your advertisement and episode, ` +
+      `then publish them in WhatsApp.`;
+
+    toast('🔔 Posting time! ' + message);
+
+    // Use the existing notification system.
+    if (
+      window.StudioNotify &&
+      typeof window.StudioNotify.send === 'function'
+    ) {
+      window.StudioNotify.send(
+        '⏰ Story posting time!',
+        message,
+        {
+          tag: `story-post-${due.dateKey}-${due.id}`,
+          data: { url: 'planner.html' }
+        }
+      );
+    }
   }
 
   // COPY AND WHATSAPP
@@ -893,7 +941,7 @@
 
     renderPending();
 
-    toast('Episode copied. Publish it in WhatsApp, then return to Channel Studio.');
+    toast('Episode copied. Publish it in WhatsApp, then return to Story Studio.');
   }
 
   // CURRENT POST
@@ -1034,7 +1082,7 @@
 
       write(data);
 
-      toast('Returned to Channel Studio. The episode queue has advanced. ✅');
+      toast('Returned to Story Studio. The episode queue has advanced. ✅');
       render();
       return;
     }
@@ -1064,6 +1112,7 @@
         data.pending = pending;
         write(data);
       }
+
       return;
     }
 
@@ -1091,6 +1140,7 @@
     });
 
     if (scheduleTimer) clearInterval(scheduleTimer);
+
     scheduleTimer = setInterval(checkSchedule, 15000);
 
     checkSchedule();
