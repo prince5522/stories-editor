@@ -1,4 +1,3 @@
-
 (function(){
 'use strict';
 
@@ -272,13 +271,28 @@ toast('Storage is full. Export a backup or shorten this story.');
 return;
 }
 
+/* Refresh existing generated episodes when an existing season is edited. */
+let refreshResult=null;
+if(old&&!isContinuation){
+refreshResult=syncEditedStoryEpisodes(record);
+}
+
 resetStoryForm(form);
 renderStories();
 
 if(isContinuation){
 toast('Continuation text saved separately. Open Episodes and split this new text to continue numbering.');
+}else if(old){
+if(refreshResult?.error){
+toast('Season updated, but episode refresh failed: '+refreshResult.error);
+}else if(refreshResult?.updated){
+toast('Season updated! '+refreshResult.updated+' episodes refreshed.'+
+(refreshResult.archived?' '+refreshResult.archived+' old episodes archived.':''));
 }else{
-toast(old?'Season updated on this device.':'Season saved on this device.');
+toast('Season updated. No previously generated episodes needed refreshing.');
+}
+}else{
+toast('Season saved on this device.');
 }
 });
 
@@ -511,6 +525,98 @@ last:w.slice(-8).join(' ')
 };
 }
 
+/* Refresh only episodes generated from an edited saved season. */
+function syncEditedStoryEpisodes(story){
+const allEpisodes=get('episodes');
+
+const linked=allEpisodes.filter(ep=>{
+if(!String(ep.method||'').startsWith('whole-season-'))return false;
+
+if(ep.storyId){
+return String(ep.storyId)===String(story.id);
+}
+
+return normalTitle(ep.storyTitle||ep.seasonTitle)===normalTitle(story.title);
+}).sort((a,b)=>
+(Number(a.seasonNumber)||1)-(Number(b.seasonNumber)||1)||
+(Number(a.episodeNumber)||1)-(Number(b.episodeNumber)||1)
+);
+
+if(!linked.length)return {updated:0};
+
+const original=String(story.content||'');
+const split=splitSeasonComplete(original);
+
+if(!split.complete||!split.firstWordMatch||!split.lastWordMatch){
+return {
+error:'The edited text failed the full-text check. Previous episodes were kept.'
+};
+}
+
+const first=linked[0];
+const startPosition=
+(Math.max(1,Number(first.seasonNumber)||1)-1)*13+
+(Math.max(1,Number(first.episodeNumber)||1)-1);
+
+const now=new Date().toLocaleString();
+
+const refreshed=split.chunks.map((content,index)=>{
+const previous=linked[index]||{};
+const absolute=startPosition+index;
+const seasonNumber=Math.floor(absolute/13)+1;
+const episodeNumber=(absolute%13)+1;
+const meta=episodeMetadata(content);
+
+return {
+...previous,
+id:previous.id||uid(),
+storyId:story.id,
+seasonTitle:story.title,
+storyTitle:story.title,
+seasonNumber,
+episodeNumber,
+title:`📖 ${story.title||'Story'} — S${String(seasonNumber).padStart(2,'0')}E${String(episodeNumber).padStart(2,'0')} 🎬`,
+content,
+method:'whole-season-250-300',
+wordCount:meta.words,
+readTime:meta.minutes,
+firstEight:meta.first,
+lastEight:meta.last,
+folderName:`${story.title||'Story'}/Season ${String(seasonNumber).padStart(2,'0')}`,
+date:previous.date||now,
+contentUpdatedAt:now,
+contentRevision:(Number(previous.contentRevision)||0)+1,
+archived:false
+};
+});
+
+/* Keep surplus episode IDs instead of deleting records that a planner may use. */
+const linkedIds=new Set(linked.map(ep=>String(ep.id)));
+const refreshedIds=new Set(refreshed.map(ep=>String(ep.id)));
+
+const surplus=linked.filter(ep=>!refreshedIds.has(String(ep.id))).map(ep=>({
+...ep,
+archived:true,
+archivedReason:'The edited manuscript now produces fewer episodes.',
+contentUpdatedAt:now
+}));
+
+const untouched=allEpisodes.filter(ep=>
+!linkedIds.has(String(ep.id))
+);
+
+if(!set('episodes',[...untouched,...refreshed,...surplus])){
+return {
+error:'Episode storage is full. The season was saved, but its episodes could not be refreshed.'
+};
+}
+
+return {
+updated:refreshed.length,
+archived:surplus.length
+};
+}
+
 /* Builds the complete WhatsApp-ready message. */
 function buildEpisodeShareText(ep){
 const storyName=String(ep.storyTitle||ep.seasonTitle||'Untitled story').trim();
@@ -526,9 +632,13 @@ const el=$('savedEpisodeList');
 if(!el)return;
 
 const q=($('episodeSearch')?.value||'').trim().toLowerCase();
+
 const all=get('episodes').map((x,i)=>({...x,_index:i}))
+.filter(x=>!x.archived)
 .filter(x=>!q||[x.title,x.seasonTitle,x.storyTitle,x.content]
 .some(v=>String(v||'').toLowerCase().includes(q)));
+
+const archived=get('episodes').filter(x=>x.archived);
 
 $('savedEpisodeCount').textContent=
 `${all.length} episode${all.length===1?'':'s'}`;
@@ -538,35 +648,54 @@ el.innerHTML='<div class="empty-state">No saved episodes match. Create a preview
 return;
 }
 
-/* Group by story name + season, not individual source record ID. */
-const groups=new Map();
+/* First level: story folders. */
+const stories=new Map();
 
 all.forEach(ep=>{
-const storyName=normalTitle(ep.storyTitle||ep.seasonTitle||'Story');
-const key=storyName+'::'+String(ep.seasonNumber||1);
+const storyName=String(ep.storyTitle||ep.seasonTitle||'Story').trim()||'Story';
+const storyKey=ep.storyId
+?'id:'+String(ep.storyId)
+:'title:'+normalTitle(storyName);
 
-if(!groups.has(key))groups.set(key,[]);
-groups.get(key).push(ep);
+if(!stories.has(storyKey)){
+stories.set(storyKey,{
+name:storyName,
+seasons:new Map()
+});
+}
+
+const group=stories.get(storyKey);
+const seasonNumber=Math.max(1,Number(ep.seasonNumber)||1);
+
+if(!group.seasons.has(seasonNumber)){
+group.seasons.set(seasonNumber,[]);
+}
+
+group.seasons.get(seasonNumber).push(ep);
 });
 
-el.innerHTML=[...groups.entries()].map(([key,eps])=>{
-eps.sort((a,b)=>(Number(a.episodeNumber)||0)-(Number(b.episodeNumber)||0));
-
-const first=eps[0];
-const folder=`📁 ${first.storyTitle||first.seasonTitle||'Story'} · Season ${first.seasonNumber||1}`;
-
-return `<details class="episode-season-folder">
-<summary>
-<b>${esc(folder)}</b>
-<span class="small muted">${eps.length} episode${eps.length===1?'':'s'}</span>
-</summary>
-<div class="episode-folder-items">
-${eps.map(ep=>`
+/* Episode card with all existing actions. */
+function episodeCard(ep){
+return `
 <article class="list-item">
-<p class="episode-number">📖 ${esc(ep.storyTitle||ep.seasonTitle||'Story')} · S${String(ep.seasonNumber||1).padStart(2,'0')}E${String(ep.episodeNumber||'—').padStart(2,'0')}</p>
+<p class="episode-number">
+📖 ${esc(ep.storyTitle||ep.seasonTitle||'Story')}
+· S${String(ep.seasonNumber||1).padStart(2,'0')}E${String(ep.episodeNumber||'—').padStart(2,'0')}
+</p>
+
 <h3>${esc(ep.title)}</h3>
-<p class="small muted">${(ep.content||'').length.toLocaleString()} characters · ${trueWordCount(ep.content||'').toLocaleString()} words · ${esc(ep.date||'Saved locally')}</p>
-<div class="episode-content-preview">${esc((ep.content||'').slice(0,300))}${(ep.content||'').length>300?'…':''}</div>
+
+<p class="small muted">
+${(ep.content||'').length.toLocaleString()} characters
+· ${trueWordCount(ep.content||'').toLocaleString()} words
+· ${esc(ep.date||'Saved locally')}
+</p>
+
+<div class="episode-content-preview">
+${esc((ep.content||'').slice(0,300))}
+${(ep.content||'').length>300?'…':''}
+</div>
+
 <div class="item-actions">
 <button class="button primary" data-episode-post="${esc(ep.id)}">📤 Post / Share</button>
 <button class="button ghost" data-episode-copy="${esc(ep.id)}">📋 Copy text</button>
@@ -574,10 +703,68 @@ ${eps.map(ep=>`
 <button class="button ghost" data-episode-edit="${esc(ep.id)}">Rename</button>
 <button class="button ghost" data-episode-delete="${esc(ep.id)}">Delete</button>
 </div>
-</article>`).join('')}
+</article>`;
+}
+
+/* Second level: season folders. */
+el.innerHTML=[...stories.entries()].map(([key,group])=>{
+const seasonFolders=[...group.seasons.entries()]
+.sort((a,b)=>a[0]-b[0])
+.map(([seasonNumber,eps])=>{
+eps.sort((a,b)=>
+(Number(a.episodeNumber)||0)-(Number(b.episodeNumber)||0)
+);
+
+return `
+<details class="episode-season-folder">
+<summary>
+<b>📂 Season ${seasonNumber}</b>
+<span class="small muted">
+${eps.length} episode${eps.length===1?'':'s'}
+</span>
+</summary>
+
+<div class="episode-folder-items">
+${eps.map(episodeCard).join('')}
 </div>
 </details>`;
 }).join('');
+
+const total=[...group.seasons.values()]
+.reduce((sum,eps)=>sum+eps.length,0);
+
+return `
+<details class="story-folder episode-story-folder">
+<summary>
+<b>📁 ${esc(group.name)}</b>
+<span class="small muted">
+${group.seasons.size} season${group.seasons.size===1?'':'s'}
+· ${total} episodes
+</span>
+</summary>
+
+<div class="episode-story-items">
+${seasonFolders}
+</div>
+</details>`;
+}).join('');
+
+/* Archived episodes are retained rather than deleted. */
+if(archived.length){
+el.innerHTML+=`
+<details class="episode-season-folder">
+<summary>
+<b>🗄️ Archived episodes</b>
+<span class="small muted">
+${archived.length} episode${archived.length===1?'':'s'}
+</span>
+</summary>
+
+<div class="episode-folder-items">
+${archived.map(episodeCard).join('')}
+</div>
+</details>`;
+}
 }
 
 function initEpisodes(){
