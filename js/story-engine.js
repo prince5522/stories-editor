@@ -9,11 +9,30 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({
   '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
 }[c]));
 const toast=m=>window.studioToast?window.studioToast(m):alert(m);
-const uid=()=>`${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+// FIX: safer uid with crypto fallback
+const uid=()=>{
+  try{
+    if(window.crypto&&typeof crypto.randomUUID==='function')return crypto.randomUUID();
+  }catch(_){}
+  return `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+};
+
+// FIX: safe set that never throws
+function safeSet(key,value){
+  try{
+    set(key,value);
+    return true;
+  }catch(err){
+    console.error('Storage write failed:',err);
+    return false;
+  }
+}
 
 let readerStoryId=null,readerEpisodeId=null,episodeDraft=[];
 
+// FIX: guard against undefined/null ids
 function storyById(id){
+  if(id===undefined||id===null||id==='')return undefined;
   return get('stories').find(s=>String(s.id)===String(id));
 }
 
@@ -58,6 +77,12 @@ function getNextEpisodePosition(title,minimumSeason){
   if(Number(minimumSeason)>season){
     season=Number(minimumSeason);
     episode=0;
+  }
+
+  // FIX: clamp broken data (>13) back to a valid slot
+  if(episode>13){
+    season+=Math.floor(episode/13);
+    episode=episode%13;
   }
 
   if(episode>=13){
@@ -135,7 +160,7 @@ function renderStories(){
             <p class="story-excerpt">${esc(content.slice(0,220))}${content.length>220?'…':''}</p>
             <p class="story-meta">${content.length.toLocaleString()} characters · ${wordCount.toLocaleString()} words · ${esc(s.date||'Saved locally')}</p>
             <div class="reading-progress"><div class="reading-progress-bar" style="width:${Math.round(pct)}%"></div></div>
-            <p class="reading-progress-label">Reading progress ${Math.round(pct)}%</p>
+            <p class="reading-progress-label">${pct>=100?'Read':'Reading progress '+Math.round(pct)+'%'}</p>
             <div class="story-actions">
               <button type="button" class="btn btn-primary" data-story-open="${esc(s.id)}">Read season</button>
               <button type="button" class="btn" data-story-split="${esc(s.id)}">Split into episodes</button>
@@ -160,6 +185,11 @@ function renderStories(){
 
 async function extractFile(file){
   const name=file.name.toLowerCase();
+
+  // FIX: reject binary text-masqueraders explicitly
+  if(name.endsWith('.docx')){
+    throw new Error('DOCX is not supported directly. Export as PDF or plain text and try again.');
+  }
 
   if(name.endsWith('.pdf')||file.type==='application/pdf'){
     if(!window.pdfjsLib)
@@ -187,6 +217,7 @@ async function extractFile(file){
 function resetStoryForm(form){
   form.reset();
   delete form.dataset.editingId;
+  // FIX: clear continuation flag so a subsequent edit doesn't inherit it
   delete form.dataset.continuationTitle;
   $('storySeason').value='1';
   const button=form.querySelector('button[type="submit"]');
@@ -211,7 +242,7 @@ function initStories(){
     s.id!==oldStories[i]?.id||
     !oldStories[i]?.seasonNumber||
     !oldStories[i]?.genre
-  ))set('stories',legacyStories);
+  ))safeSet('stories',legacyStories);
 
   const file=$('storyFile');
 
@@ -271,7 +302,8 @@ function initStories(){
     if(index>=0)all[index]=record;
     else all.push(record);
 
-    if(!set('stories',all)){
+    // FIX: safe write
+    if(!safeSet('stories',all)){
       toast('Storage is full. Export a backup or shorten this story.');
       return;
     }
@@ -281,14 +313,23 @@ function initStories(){
     let refreshResult=null;
 
     if(old&&!isContinuation){
-      refreshResult=syncEditedStoryEpisodes(record);
+      // FIX: guard against a missing (or unexported) helper
+      if(typeof syncEditedStoryEpisodes==='function'){
+        try{
+          refreshResult=syncEditedStoryEpisodes(record);
+        }catch(err){
+          console.error('syncEditedStoryEpisodes failed',err);
+          refreshResult={error:err.message||String(err)};
+        }
+      }
     }
 
     resetStoryForm(form);
     renderStories();
 
     if(isContinuation){
-      toast('Continuation text saved separately. Open Episodes and split this new text to continue numbering.');
+      // FIX: offer a direct next step instead of a dead-end toast
+      toast('Continuation text saved. Use "Split into episodes" to number it after your last episode.');
     }else if(old){
       if(refreshResult?.error){
         toast('Season updated, but episode refresh failed: '+refreshResult.error);
@@ -361,6 +402,8 @@ function initStories(){
     }
 
     if(b.dataset.storyEdit){
+      // FIX: ensure we're not accidentally leaving continuation mode on
+      delete form.dataset.continuationTitle;
       $('storyTitle').value=story.title;
       $('storySeason').value=story.seasonNumber||1;
       $('storyGenre').value=story.genre||'General';
@@ -378,7 +421,7 @@ function initStories(){
     if(b.dataset.storyDelete&&confirm(
       `Delete “${story.title}”? This also removes its saved season text from this browser.`
     )){
-      set('stories',get('stories').filter(s=>String(s.id)!==String(id)));
+      safeSet('stories',get('stories').filter(s=>String(s.id)!==String(id)));
       renderStories();
       toast('Season deleted. Existing saved episodes are kept.');
     }
@@ -390,7 +433,10 @@ function initStories(){
 
     if(idx>=0){
       all[idx].readingProgress=100;
-      set('stories',all);
+      if(!safeSet('stories',all)){
+        toast('Storage is full. Could not save reading progress.');
+        return;
+      }
       renderStories();
       toast('Season marked as read.');
     }
@@ -402,73 +448,18 @@ function initStories(){
 
   $('storyFontUp')?.addEventListener('click',()=>{
     const t=$('storyReaderText');
-    t.style.fontSize=`${Math.min(30,(parseFloat(t.style.fontSize)||18)+2)}px`;
+    // FIX: read computed size so CSS-defined font-size is respected
+    const current=parseFloat(getComputedStyle(t).fontSize)||18;
+    t.style.fontSize=`${Math.min(30,current+2)}px`;
   });
 
   $('storyFontDown')?.addEventListener('click',()=>{
     const t=$('storyReaderText');
-    t.style.fontSize=`${Math.max(12,(parseFloat(t.style.fontSize)||18)-2)}px`;
+    const current=parseFloat(getComputedStyle(t).fontSize)||18;
+    t.style.fontSize=`${Math.max(12,current-2)}px`;
   });
 
   renderStories();
-}
-  /* Second level: season folders.
-     Third level: individual episode cards. */
-  el.innerHTML=[...stories.entries()].map(([key,group])=>{
-    const seasonFolders=[...group.seasons.entries()]
-      .sort((a,b)=>a[0]-b[0])
-      .map(([seasonNumber,eps])=>{
-        eps.sort((a,b)=>
-          (Number(a.episodeNumber)||0)-(Number(b.episodeNumber)||0)
-        );
-
-        return `
-          <details class="episode-season-folder">
-            <summary>
-              <b>📂 Season ${seasonNumber}</b>
-              <span class="small muted">
-                ${eps.length} episode${eps.length===1?'':'s'}
-              </span>
-            </summary>
-
-            <div class="episode-folder-items">
-              ${eps.map(episodeCard).join('')}
-            </div>
-          </details>`;
-      }).join('');
-
-    const total=[...group.seasons.values()]
-      .reduce((sum,eps)=>sum+eps.length,0);
-
-    return `
-      <details class="story-folder episode-story-folder">
-        <summary>
-          <b>📁 ${esc(group.name)}</b>
-          <span class="small muted">
-            ${group.seasons.size} season${group.seasons.size===1?'':'s'}
-            · ${total} episodes
-          </span>
-        </summary>
-
-        <div class="episode-story-items">
-          ${seasonFolders}
-        </div>
-      </details>`;
-  }).join('');
-
-  /* Archived episodes are retained so old references are not lost. */
-  if(archived.length){
-    el.innerHTML+=`
-      <details class="episode-season-folder">
-        <summary>
-          <b>🗄️ Archived episodes</b>
-          <span class="small muted">${archived.length} episode${archived.length===1?'':'s'}</span>
-        </summary>
-        <div class="episode-folder-items">
-          ${archived.map(episodeCard).join('')}
-        </div>
-      </details>`;
-  }
 }
 
 function initEpisodes(){
@@ -494,7 +485,7 @@ function initEpisodes(){
     return out;
   });
 
-  if(migrated)set('episodes',fixedEpisodes);
+  if(migrated)safeSet('episodes',fixedEpisodes);
 
   const select=$('splitStory');
   renderStorySelect();
@@ -560,6 +551,15 @@ function initEpisodes(){
     const sumWords=episodeDraft.reduce((sum,ep)=>sum+ep.wordCount,0);
 
     if(joined!==original||sumWords!==split.totalWords||episodeDraft.length===0){
+      // FIX: log first mismatch offset for debugging
+      if(joined!==original){
+        let mismatch=0;
+        const len=Math.min(joined.length,original.length);
+        while(mismatch<len&&joined[mismatch]===original[mismatch])mismatch++;
+        console.error('Split mismatch at offset',mismatch,
+          'expected:',JSON.stringify(original.slice(Math.max(0,mismatch-20),mismatch+20)),
+          'got:',JSON.stringify(joined.slice(Math.max(0,mismatch-20),mismatch+20)));
+      }
       episodeDraft=[];
       toast('The whole-season check failed. Nothing was saved. Try again.');
       return;
@@ -623,7 +623,8 @@ function initEpisodes(){
     const all=get('episodes');
     all.push(...chosen.map(x=>({...x,date:new Date().toLocaleString()})));
 
-    if(!set('episodes',all)){
+    // FIX: safe write
+    if(!safeSet('episodes',all)){
       toast('Storage is full. Export a backup and try fewer episodes.');
       return;
     }
@@ -656,7 +657,6 @@ function initEpisodes(){
     if(!ep)return;
 
     const episodeText=String(ep.content||'');
-    const shareText=buildEpisodeShareText(ep);
 
     /* COPY */
     if(b.dataset.episodeCopy){
@@ -664,6 +664,8 @@ function initEpisodes(){
         toast('This episode has no text.');
         return;
       }
+
+      const shareText=buildEpisodeShareText(ep);
 
       try{
         await navigator.clipboard.writeText(shareText);
@@ -691,6 +693,8 @@ function initEpisodes(){
         toast('This episode has no text.');
         return;
       }
+
+      const shareText=buildEpisodeShareText(ep);
 
       if(navigator.share){
         try{
@@ -736,7 +740,10 @@ function initEpisodes(){
       }
 
       ep.title=title.trim();
-      set('episodes',all);
+      if(!safeSet('episodes',all)){
+        toast('Storage is full. Rename was not saved.');
+        return;
+      }
       renderSavedEpisodes();
       toast('Episode renamed.');
       return;
@@ -744,7 +751,10 @@ function initEpisodes(){
 
     /* DELETE */
     if(b.dataset.episodeDelete&&confirm(`Delete “${ep.title}”?`)){
-      set('episodes',all.filter(x=>String(x.id)!==String(id)));
+      if(!safeSet('episodes',all.filter(x=>String(x.id)!==String(id)))){
+        toast('Storage is full. Delete was not saved.');
+        return;
+      }
       renderSavedEpisodes();
       toast('Episode deleted.');
     }
