@@ -9,30 +9,11 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({
   '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
 }[c]));
 const toast=m=>window.studioToast?window.studioToast(m):alert(m);
-// FIX: safer uid with crypto fallback
-const uid=()=>{
-  try{
-    if(window.crypto&&typeof crypto.randomUUID==='function')return crypto.randomUUID();
-  }catch(_){}
-  return `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-};
-
-// FIX: safe set that never throws
-function safeSet(key,value){
-  try{
-    set(key,value);
-    return true;
-  }catch(err){
-    console.error('Storage write failed:',err);
-    return false;
-  }
-}
+const uid=()=>`${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
 
 let readerStoryId=null,readerEpisodeId=null,episodeDraft=[];
 
-// FIX: guard against undefined/null ids
 function storyById(id){
-  if(id===undefined||id===null||id==='')return undefined;
   return get('stories').find(s=>String(s.id)===String(id));
 }
 
@@ -77,12 +58,6 @@ function getNextEpisodePosition(title,minimumSeason){
   if(Number(minimumSeason)>season){
     season=Number(minimumSeason);
     episode=0;
-  }
-
-  // FIX: clamp broken data (>13) back to a valid slot
-  if(episode>13){
-    season+=Math.floor(episode/13);
-    episode=episode%13;
   }
 
   if(episode>=13){
@@ -160,7 +135,7 @@ function renderStories(){
             <p class="story-excerpt">${esc(content.slice(0,220))}${content.length>220?'…':''}</p>
             <p class="story-meta">${content.length.toLocaleString()} characters · ${wordCount.toLocaleString()} words · ${esc(s.date||'Saved locally')}</p>
             <div class="reading-progress"><div class="reading-progress-bar" style="width:${Math.round(pct)}%"></div></div>
-            <p class="reading-progress-label">${pct>=100?'Read':'Reading progress '+Math.round(pct)+'%'}</p>
+            <p class="reading-progress-label">Reading progress ${Math.round(pct)}%</p>
             <div class="story-actions">
               <button type="button" class="btn btn-primary" data-story-open="${esc(s.id)}">Read season</button>
               <button type="button" class="btn" data-story-split="${esc(s.id)}">Split into episodes</button>
@@ -185,11 +160,6 @@ function renderStories(){
 
 async function extractFile(file){
   const name=file.name.toLowerCase();
-
-  // FIX: reject binary text-masqueraders explicitly
-  if(name.endsWith('.docx')){
-    throw new Error('DOCX is not supported directly. Export as PDF or plain text and try again.');
-  }
 
   if(name.endsWith('.pdf')||file.type==='application/pdf'){
     if(!window.pdfjsLib)
@@ -217,7 +187,6 @@ async function extractFile(file){
 function resetStoryForm(form){
   form.reset();
   delete form.dataset.editingId;
-  // FIX: clear continuation flag so a subsequent edit doesn't inherit it
   delete form.dataset.continuationTitle;
   $('storySeason').value='1';
   const button=form.querySelector('button[type="submit"]');
@@ -242,7 +211,7 @@ function initStories(){
     s.id!==oldStories[i]?.id||
     !oldStories[i]?.seasonNumber||
     !oldStories[i]?.genre
-  ))safeSet('stories',legacyStories);
+  ))set('stories',legacyStories);
 
   const file=$('storyFile');
 
@@ -302,8 +271,7 @@ function initStories(){
     if(index>=0)all[index]=record;
     else all.push(record);
 
-    // FIX: safe write
-    if(!safeSet('stories',all)){
+    if(!set('stories',all)){
       toast('Storage is full. Export a backup or shorten this story.');
       return;
     }
@@ -313,23 +281,14 @@ function initStories(){
     let refreshResult=null;
 
     if(old&&!isContinuation){
-      // FIX: guard against a missing (or unexported) helper
-      if(typeof syncEditedStoryEpisodes==='function'){
-        try{
-          refreshResult=syncEditedStoryEpisodes(record);
-        }catch(err){
-          console.error('syncEditedStoryEpisodes failed',err);
-          refreshResult={error:err.message||String(err)};
-        }
-      }
+      refreshResult=syncEditedStoryEpisodes(record);
     }
 
     resetStoryForm(form);
     renderStories();
 
     if(isContinuation){
-      // FIX: offer a direct next step instead of a dead-end toast
-      toast('Continuation text saved. Use "Split into episodes" to number it after your last episode.');
+      toast('Continuation text saved separately. Open Episodes and split this new text to continue numbering.');
     }else if(old){
       if(refreshResult?.error){
         toast('Season updated, but episode refresh failed: '+refreshResult.error);
@@ -402,8 +361,6 @@ function initStories(){
     }
 
     if(b.dataset.storyEdit){
-      // FIX: ensure we're not accidentally leaving continuation mode on
-      delete form.dataset.continuationTitle;
       $('storyTitle').value=story.title;
       $('storySeason').value=story.seasonNumber||1;
       $('storyGenre').value=story.genre||'General';
@@ -421,7 +378,7 @@ function initStories(){
     if(b.dataset.storyDelete&&confirm(
       `Delete “${story.title}”? This also removes its saved season text from this browser.`
     )){
-      safeSet('stories',get('stories').filter(s=>String(s.id)!==String(id)));
+      set('stories',get('stories').filter(s=>String(s.id)!==String(id)));
       renderStories();
       toast('Season deleted. Existing saved episodes are kept.');
     }
@@ -433,10 +390,7 @@ function initStories(){
 
     if(idx>=0){
       all[idx].readingProgress=100;
-      if(!safeSet('stories',all)){
-        toast('Storage is full. Could not save reading progress.');
-        return;
-      }
+      set('stories',all);
       renderStories();
       toast('Season marked as read.');
     }
@@ -448,18 +402,399 @@ function initStories(){
 
   $('storyFontUp')?.addEventListener('click',()=>{
     const t=$('storyReaderText');
-    // FIX: read computed size so CSS-defined font-size is respected
-    const current=parseFloat(getComputedStyle(t).fontSize)||18;
-    t.style.fontSize=`${Math.min(30,current+2)}px`;
+    t.style.fontSize=`${Math.min(30,(parseFloat(t.style.fontSize)||18)+2)}px`;
   });
 
   $('storyFontDown')?.addEventListener('click',()=>{
     const t=$('storyReaderText');
-    const current=parseFloat(getComputedStyle(t).fontSize)||18;
-    t.style.fontSize=`${Math.max(12,current-2)}px`;
+    t.style.fontSize=`${Math.max(12,(parseFloat(t.style.fontSize)||18)-2)}px`;
   });
 
   renderStories();
+}
+
+function wordMatches(text){
+  return [...text.matchAll(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)];
+}
+
+function trueWordCount(text){
+  return wordMatches(text).length;
+}
+
+function splitSeasonComplete(text){
+  const words=wordMatches(text);
+  const totalWords=words.length;
+
+  if(!totalWords){
+    return {
+      chunks:[],
+      totalWords:0,
+      complete:text==='',
+      episodeWordTotal:0,
+      firstWordMatch:true,
+      lastWordMatch:true
+    };
+  }
+
+  let count=totalWords<500?1:
+    Math.max(2,Math.ceil(totalWords/300),Math.round(totalWords/275));
+
+  while(count>1&&Math.floor(totalWords/count)<250)count--;
+  while(totalWords>=500&&Math.ceil(totalWords/count)>300)count++;
+
+  const boundaries=[];
+
+  const addBoundary=(pos,kind,priority)=>{
+    if(pos>0&&pos<text.length)boundaries.push({pos,kind,priority});
+  };
+
+  const re=/[.!?…]["'’”)](?:[ \t]+|\r?\n|$)|(?:\r?\n[ \t]*\r?\n+)/gu;
+  let m;
+
+  while((m=re.exec(text))){
+    addBoundary(m.index+m[0].length,'natural',2);
+  }
+
+  const chunks=[];
+  let cursor=0,wordCursor=0;
+
+  for(let i=0;i<count-1;i++){
+    const remainingEpisodes=count-i-1;
+    const minWord=wordCursor+250;
+    const maxWord=Math.min(totalWords-remainingEpisodes*250,wordCursor+300);
+    const target=Math.round((i+1)*totalWords/count);
+
+    const candidates=boundaries.map(b=>{
+      let lo=0,hi=words.length;
+
+      while(lo<hi){
+        const mid=(lo+hi)>>>1;
+        if(words[mid].index<b.pos)lo=mid+1;
+        else hi=mid;
+      }
+
+      return {...b,wordIndex:lo};
+    }).filter(b=>
+      b.pos>cursor&&
+      b.wordIndex>=minWord&&
+      b.wordIndex<=maxWord&&
+      b.wordIndex>wordCursor
+    );
+
+    let pick=candidates.sort((a,b)=>
+      (Math.abs(a.wordIndex-target)-Math.abs(b.wordIndex-target))||
+      (b.priority-a.priority)
+    )[0];
+
+    if(!pick){
+      const fallbackIndex=Math.max(wordCursor+250,Math.min(maxWord,target));
+      const targetWord=words[Math.min(fallbackIndex,totalWords-1)];
+      pick={pos:targetWord.index,wordIndex:fallbackIndex};
+    }
+
+    if(pick.pos<=cursor||pick.wordIndex<=wordCursor){
+      const fallbackIndex=Math.max(wordCursor+250,Math.min(maxWord,target));
+      const targetWord=words[Math.min(fallbackIndex,totalWords-1)];
+      pick={pos:targetWord.index,wordIndex:fallbackIndex};
+    }
+
+    chunks.push(text.slice(cursor,pick.pos));
+    cursor=pick.pos;
+    wordCursor=pick.wordIndex;
+  }
+
+  if(cursor<text.length)chunks.push(text.slice(cursor));
+
+  const joined=chunks.join('');
+  const episodeWordTotal=chunks.reduce((sum,part)=>sum+trueWordCount(part),0);
+
+  const firstWordMatch=
+    (wordMatches(chunks[0]||'')[0]?.[0]||'')===(words[0]?.[0]||'');
+
+  const lastWords=wordMatches(chunks[chunks.length-1]||'');
+  const lastWordMatch=
+    (lastWords[lastWords.length-1]?.[0]||'')===(words[words.length-1]?.[0]||'');
+
+  return {
+    chunks,
+    totalWords,
+    complete:joined===text&&episodeWordTotal===totalWords&&chunks.length>0,
+    episodeWordTotal,
+    firstWordMatch,
+    lastWordMatch
+  };
+}
+
+function episodeMetadata(content){
+  const w=wordMatches(content).map(m=>m[0]);
+  return {
+    words:w.length,
+    minutes:(w.length/220).toFixed(2),
+    first:w.slice(0,8).join(' '),
+    last:w.slice(-8).join(' ')
+  };
+}
+
+/* Refresh only episodes generated from an edited saved season. */
+function syncEditedStoryEpisodes(story){
+  const allEpisodes=get('episodes');
+
+  const linked=allEpisodes.filter(ep=>{
+    const generated=String(ep.method||'').startsWith('whole-season-');
+    if(!generated)return false;
+
+    if(ep.storyId){
+      return String(ep.storyId)===String(story.id);
+    }
+
+    /* Legacy generated episodes without a storyId. */
+    return normalTitle(ep.storyTitle||ep.seasonTitle)===normalTitle(story.title);
+  }).sort((a,b)=>
+    (Number(a.seasonNumber)||1)-(Number(b.seasonNumber)||1)||
+    (Number(a.episodeNumber)||1)-(Number(b.episodeNumber)||1)
+  );
+
+  if(!linked.length)return {updated:0};
+
+  const original=String(story.content||'');
+  const split=splitSeasonComplete(original);
+
+  if(
+    !split.complete||
+    !split.firstWordMatch||
+    !split.lastWordMatch
+  ){
+    return {
+      error:'The edited text failed the full-text check. Previous episodes were kept.'
+    };
+  }
+
+  /* Continue from the first previously generated episode position. */
+  const first=linked[0];
+  const startSeason=Math.max(1,Number(first.seasonNumber)||1);
+  const startEpisode=Math.max(1,Number(first.episodeNumber)||1);
+
+  const startPosition=
+    (startSeason-1)*13+(startEpisode-1);
+
+  const now=new Date().toLocaleString();
+
+  const refreshed=split.chunks.map((content,index)=>{
+    const previous=linked[index]||{};
+    const absolute=startPosition+index;
+
+    const seasonNumber=Math.floor(absolute/13)+1;
+    const episodeNumber=(absolute%13)+1;
+    const meta=episodeMetadata(content);
+
+    return {
+      ...previous,
+      id:previous.id||uid(),
+      storyId:story.id,
+      seasonTitle:story.title,
+      storyTitle:story.title,
+      seasonNumber,
+      episodeNumber,
+      title:`📖 ${story.title||'Story'} — S${String(seasonNumber).padStart(2,'0')}E${String(episodeNumber).padStart(2,'0')} 🎬`,
+      content,
+      method:'whole-season-250-300',
+      wordCount:meta.words,
+      readTime:meta.minutes,
+      firstEight:meta.first,
+      lastEight:meta.last,
+      folderName:`${story.title||'Story'}/Season ${String(seasonNumber).padStart(2,'0')}`,
+      date:previous.date||now,
+      contentUpdatedAt:now,
+      contentRevision:(Number(previous.contentRevision)||0)+1,
+      archived:false
+    };
+  });
+
+  /* Keep old IDs if the edited manuscript now produces fewer episodes.
+     Archive surplus episodes instead of deleting planner references. */
+  const refreshedIds=new Set(refreshed.map(ep=>String(ep.id)));
+
+  const surplus=linked.slice(refreshed.length).map(ep=>({
+    ...ep,
+    archived:true,
+    archivedReason:'The edited manuscript now produces fewer episodes.',
+    contentUpdatedAt:now
+  }));
+
+  const linkedIds=new Set(linked.map(ep=>String(ep.id)));
+
+  const untouched=allEpisodes.filter(ep=>
+    !linkedIds.has(String(ep.id))
+  );
+
+  const updated=[
+    ...untouched,
+    ...refreshed,
+    ...surplus
+  ];
+
+  if(!set('episodes',updated)){
+    return {
+      error:'Episode storage is full. The edited season was saved, but its episodes could not be refreshed.'
+    };
+  }
+
+  return {
+    updated:refreshed.length,
+    archived:surplus.length
+  };
+}
+
+/* Builds the complete WhatsApp-ready message. */
+function buildEpisodeShareText(ep){
+  const storyName=String(ep.storyTitle||ep.seasonTitle||'Untitled story').trim();
+  const seasonNumber=Math.max(1,Number(ep.seasonNumber)||1);
+  const episodeNumber=Number(ep.episodeNumber)||1;
+  const content=String(ep.content||'').trim();
+
+  return `📖 ${storyName}\n🎬 SEASON ${seasonNumber} — EPISODE ${String(episodeNumber).padStart(2,'0')}\n\n${content}\n\n...To be continued...`;
+}
+
+function renderSavedEpisodes(){
+  const el=$('savedEpisodeList');
+  if(!el)return;
+
+  const q=($('episodeSearch')?.value||'').trim().toLowerCase();
+
+  const all=get('episodes').map((x,i)=>({...x,_index:i}))
+    .filter(x=>!x.archived)
+    .filter(x=>!q||[
+      x.title,x.seasonTitle,x.storyTitle,x.content
+    ].some(v=>String(v||'').toLowerCase().includes(q)));
+
+  const archived=get('episodes').filter(x=>x.archived);
+
+  $('savedEpisodeCount').textContent=
+    `${all.length} episode${all.length===1?'':'s'}`;
+
+  if(!all.length){
+    el.innerHTML='<div class="empty-state">No saved episodes match. Create a preview above and save the episodes you need.</div>';
+    return;
+  }
+
+  /* First level: story folders. */
+  const stories=new Map();
+
+  all.forEach(ep=>{
+    const storyName=String(
+      ep.storyTitle||ep.seasonTitle||'Story'
+    ).trim()||'Story';
+
+    const storyKey=ep.storyId
+      ?'id:'+String(ep.storyId)
+      :'title:'+normalTitle(storyName);
+
+    if(!stories.has(storyKey)){
+      stories.set(storyKey,{
+        name:storyName,
+        seasons:new Map()
+      });
+    }
+
+    const storyGroup=stories.get(storyKey);
+    const seasonNumber=Math.max(1,Number(ep.seasonNumber)||1);
+
+    if(!storyGroup.seasons.has(seasonNumber)){
+      storyGroup.seasons.set(seasonNumber,[]);
+    }
+
+    storyGroup.seasons.get(seasonNumber).push(ep);
+  });
+
+  /* Episode card: existing actions are preserved. */
+  function episodeCard(ep){
+    return `
+      <article class="list-item">
+        <p class="episode-number">
+          📖 ${esc(ep.storyTitle||ep.seasonTitle||'Story')}
+          · S${String(ep.seasonNumber||1).padStart(2,'0')}E${String(ep.episodeNumber||'—').padStart(2,'0')}
+        </p>
+
+        <h3>${esc(ep.title)}</h3>
+
+        <p class="small muted">
+          ${(ep.content||'').length.toLocaleString()} characters
+          · ${trueWordCount(ep.content||'').toLocaleString()} words
+          · ${esc(ep.date||'Saved locally')}
+        </p>
+
+        <div class="episode-content-preview">
+          ${esc((ep.content||'').slice(0,300))}
+          ${(ep.content||'').length>300?'…':''}
+        </div>
+
+        <div class="item-actions">
+          <button class="button primary" data-episode-post="${esc(ep.id)}">📤 Post / Share</button>
+          <button class="button ghost" data-episode-copy="${esc(ep.id)}">📋 Copy text</button>
+          <button class="button ghost" data-episode-open="${esc(ep.id)}">Read</button>
+          <button class="button ghost" data-episode-edit="${esc(ep.id)}">Rename</button>
+          <button class="button ghost" data-episode-delete="${esc(ep.id)}">Delete</button>
+        </div>
+      </article>`;
+  }
+
+  /* Second level: season folders.
+     Third level: individual episode cards. */
+  el.innerHTML=[...stories.entries()].map(([key,group])=>{
+    const seasonFolders=[...group.seasons.entries()]
+      .sort((a,b)=>a[0]-b[0])
+      .map(([seasonNumber,eps])=>{
+        eps.sort((a,b)=>
+          (Number(a.episodeNumber)||0)-(Number(b.episodeNumber)||0)
+        );
+
+        return `
+          <details class="episode-season-folder">
+            <summary>
+              <b>📂 Season ${seasonNumber}</b>
+              <span class="small muted">
+                ${eps.length} episode${eps.length===1?'':'s'}
+              </span>
+            </summary>
+
+            <div class="episode-folder-items">
+              ${eps.map(episodeCard).join('')}
+            </div>
+          </details>`;
+      }).join('');
+
+    const total=[...group.seasons.values()]
+      .reduce((sum,eps)=>sum+eps.length,0);
+
+    return `
+      <details class="story-folder episode-story-folder">
+        <summary>
+          <b>📁 ${esc(group.name)}</b>
+          <span class="small muted">
+            ${group.seasons.size} season${group.seasons.size===1?'':'s'}
+            · ${total} episodes
+          </span>
+        </summary>
+
+        <div class="episode-story-items">
+          ${seasonFolders}
+        </div>
+      </details>`;
+  }).join('');
+
+  /* Archived episodes are retained so old references are not lost. */
+  if(archived.length){
+    el.innerHTML+=`
+      <details class="episode-season-folder">
+        <summary>
+          <b>🗄️ Archived episodes</b>
+          <span class="small muted">${archived.length} episode${archived.length===1?'':'s'}</span>
+        </summary>
+        <div class="episode-folder-items">
+          ${archived.map(episodeCard).join('')}
+        </div>
+      </details>`;
+  }
 }
 
 function initEpisodes(){
@@ -485,7 +820,7 @@ function initEpisodes(){
     return out;
   });
 
-  if(migrated)safeSet('episodes',fixedEpisodes);
+  if(migrated)set('episodes',fixedEpisodes);
 
   const select=$('splitStory');
   renderStorySelect();
@@ -551,15 +886,6 @@ function initEpisodes(){
     const sumWords=episodeDraft.reduce((sum,ep)=>sum+ep.wordCount,0);
 
     if(joined!==original||sumWords!==split.totalWords||episodeDraft.length===0){
-      // FIX: log first mismatch offset for debugging
-      if(joined!==original){
-        let mismatch=0;
-        const len=Math.min(joined.length,original.length);
-        while(mismatch<len&&joined[mismatch]===original[mismatch])mismatch++;
-        console.error('Split mismatch at offset',mismatch,
-          'expected:',JSON.stringify(original.slice(Math.max(0,mismatch-20),mismatch+20)),
-          'got:',JSON.stringify(joined.slice(Math.max(0,mismatch-20),mismatch+20)));
-      }
       episodeDraft=[];
       toast('The whole-season check failed. Nothing was saved. Try again.');
       return;
@@ -623,8 +949,7 @@ function initEpisodes(){
     const all=get('episodes');
     all.push(...chosen.map(x=>({...x,date:new Date().toLocaleString()})));
 
-    // FIX: safe write
-    if(!safeSet('episodes',all)){
+    if(!set('episodes',all)){
       toast('Storage is full. Export a backup and try fewer episodes.');
       return;
     }
@@ -657,6 +982,7 @@ function initEpisodes(){
     if(!ep)return;
 
     const episodeText=String(ep.content||'');
+    const shareText=buildEpisodeShareText(ep);
 
     /* COPY */
     if(b.dataset.episodeCopy){
@@ -664,8 +990,6 @@ function initEpisodes(){
         toast('This episode has no text.');
         return;
       }
-
-      const shareText=buildEpisodeShareText(ep);
 
       try{
         await navigator.clipboard.writeText(shareText);
@@ -693,8 +1017,6 @@ function initEpisodes(){
         toast('This episode has no text.');
         return;
       }
-
-      const shareText=buildEpisodeShareText(ep);
 
       if(navigator.share){
         try{
@@ -740,10 +1062,7 @@ function initEpisodes(){
       }
 
       ep.title=title.trim();
-      if(!safeSet('episodes',all)){
-        toast('Storage is full. Rename was not saved.');
-        return;
-      }
+      set('episodes',all);
       renderSavedEpisodes();
       toast('Episode renamed.');
       return;
@@ -751,10 +1070,7 @@ function initEpisodes(){
 
     /* DELETE */
     if(b.dataset.episodeDelete&&confirm(`Delete “${ep.title}”?`)){
-      if(!safeSet('episodes',all.filter(x=>String(x.id)!==String(id)))){
-        toast('Storage is full. Delete was not saved.');
-        return;
-      }
+      set('episodes',all.filter(x=>String(x.id)!==String(id)));
       renderSavedEpisodes();
       toast('Episode deleted.');
     }
