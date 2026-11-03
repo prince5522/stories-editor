@@ -1,63 +1,439 @@
-(function(){
+(function () {
 'use strict';
-const $=id=>document.getElementById(id);
-const store=()=>window.StudioStore;
-const getTasks=()=>{try{return store().get('tasks',[])||[]}catch(e){return []}};
-const setTasks=items=>store().set('tasks',items);
-const getChannels=()=>{try{return store().get('channels',[])||[]}catch(e){return []}};
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const dueKey=t=>String(t.id||t.title)+'|'+String(t.date||'');
-function fillChannels(){
- const select=$('taskChannel');if(!select)return;
- const current=select.value,channels=getChannels();
- select.innerHTML='<option value="">Choose a saved channel…</option>'+channels.filter(c=>c.url).map(c=>`<option value="${esc(c.url)}">${esc(c.name||c.url)}</option>`).join('');
- if([...select.options].some(o=>o.value===current))select.value=current;
- if(!channels.some(c=>c.url))select.title='Open Channels and save a channel URL first.';
+
+const KEY = 'storySlotPlannerV1';
+const $ = id => document.getElementById(id);
+const store = () => window.StudioStore;
+
+const SLOT_NAMES = ['morning', 'lunch', 'evening'];
+let settings = null;
+let activeSlot = null;
+let mediaDB = null;
+
+function get(key, fallback) {
+  return store().get(key, fallback);
 }
-function dueTasks(){const now=Date.now();return getTasks().map((t,i)=>({...t,_index:i})).filter(t=>(t.type||'post')==='post'&&!t.done&&t.date&&Number.isFinite(new Date(t.date).getTime())&&new Date(t.date).getTime()<=now)}
-function renderDue(){
- let panel=$('duePostPanel');
- if(!panel){panel=document.createElement('section');panel.id='duePostPanel';panel.className='panel due-post-panel';const form=$('taskForm')?.closest('section');if(form)form.insertAdjacentElement('afterend',panel);else return;}
- const due=dueTasks();
- if(!due.length){panel.innerHTML='<p class="small muted">⏰ No posts are due right now.</p>';return;}
- panel.innerHTML='<div class="section-heading"><div><p class="eyebrow">POSTING TIME</p><h2>⏰ Posting alarm — your posts are due</h2></div><span class="pill">'+due.length+' due</span></div>'+due.map(t=>`<article class="list-item due-post-item"><h3>📣 ${esc(t.title||'Planned post')}</h3><p class="small muted">${esc(t.channelName||'Selected channel')} · scheduled ${esc(new Date(t.date).toLocaleString())}</p><p class="due-post-copy">${esc(t.postText||t.title||'')}</p><div class="item-actions"><button class="button primary" type="button" data-publish-task="${esc(t.id)}">📋 Copy post & open channel</button><button class="button ghost" type="button" data-confirm-posted="${esc(t.id)}">✅ I’ve posted it</button></div><p class="small muted">First copy and open the channel, publish it in WhatsApp, then tap “I’ve posted it”.</p></article>`).join('')+'<p class="small muted">For privacy and safety, Channel Studio cannot paste into WhatsApp or verify that WhatsApp published the post automatically.</p>';
+
+function save(key, value) {
+  return store().set(key, value);
 }
-async function copyText(text){try{await navigator.clipboard.writeText(text);return true}catch(e){const area=document.createElement('textarea');area.value=text;area.setAttribute('readonly','');area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);area.select();let ok=false;try{ok=document.execCommand('copy')}catch(err){}area.remove();return ok}}
-async function copyAndOpen(taskId){
- const tasks=getTasks(),idx=tasks.findIndex(t=>String(t.id)===String(taskId));if(idx<0)return;
- const task=tasks[idx],text=String(task.postText||task.title||''),url=String(task.channelUrl||'');
- if(!url){window.studioToast?.('No channel URL is saved for this post. Open Channels and save the channel link first.');return;}
- // Open on the user's tap: mobile browsers block apps being launched automatically in the background.
- const win=window.open(url,'_blank');
- const copied=await copyText(text);
- tasks[idx]={...task,postPreparedAt:new Date().toISOString(),postPrepared:true};setTasks(tasks);
- if(!copied)window.prompt('Copy your post text, then return to the channel:',text);
- window.studioToast?.(copied?'Post copied. The channel was opened; paste and publish it there.':'Channel opened. Copy the post text from the prompt and publish it manually.');
- renderDue();document.dispatchEvent(new Event('planner:posts-updated'));$('taskFilter')?.dispatchEvent(new Event('change'));
+
+function readSettings() {
+  return get(KEY, {});
 }
-function confirmPosted(taskId){const tasks=getTasks(),idx=tasks.findIndex(t=>String(t.id)===String(taskId));if(idx<0)return;const task=tasks[idx];if(!confirm('Mark this post as completed? Confirm only after you have published it in WhatsApp.'))return;tasks[idx]={...task,done:true,completedAt:new Date().toISOString(),completionNote:'User confirmed that the post was published in WhatsApp'};setTasks(tasks);window.studioToast?.('Post marked completed. ✅');renderDue();document.dispatchEvent(new Event('planner:posts-updated'));$('taskFilter')?.dispatchEvent(new Event('change'));}
-function readSeen(){try{return JSON.parse(localStorage.getItem('channelStudioDuePostAlarms')||'{}')}catch(e){return {}}}
-function checkDue(){
- const due=dueTasks();if(!due.length)return;const seen=readSeen();let changed=false;
- for(const task of due){const key=dueKey(task);if(seen[key])continue;seen[key]=Date.now();changed=true;
-  const body=(task.title||'Your planned post')+' is due now. Open Channel Studio to copy the post and publish it.';
-  try{
-   if(window.StudioNotify?.send)window.StudioNotify.send('⏰ Channel Studio posting alarm',body,{tag:'channel-studio-'+key,url:'planner.html'});
-   else if('Notification'in window&&Notification.permission==='granted'){const n=new Notification('⏰ Channel Studio posting alarm',{body,tag:'channel-studio-'+key});n.onclick=()=>{try{window.focus()}catch(e){}window.location.href='planner.html';n.close()}}
-  }catch(e){}
-  try{if(!window.StudioNotify?.send)window.StudioNotify?.playTone?.(true)}catch(e){}
-  window.studioToast?.('⏰ Posting time reached: '+(task.title||'Your planned post')+'. Copy it, publish it in WhatsApp, then confirm completion.');
- }
- if(changed)try{localStorage.setItem('channelStudioDuePostAlarms',JSON.stringify(seen))}catch(e){}
+
+function saveSettings() {
+  save(KEY, settings);
 }
-document.addEventListener('DOMContentLoaded',()=>{
- fillChannels();
- $('enableNotifications')?.addEventListener('click',async()=>{const status=$('notificationStatus');if(!('Notification'in window)){if(status)status.textContent='This browser does not support notifications.';return}const result=await Notification.requestPermission();if(status)status.textContent=result==='granted'?'✅ Posting-time notifications enabled. Keep Channel Studio open for the most reliable alarm.':result==='denied'?'Notifications are blocked. Enable them in your browser/site settings.':'Notifications were not enabled.';window.studioToast?.(result==='granted'?'Posting alerts enabled.':'Notification permission: '+result)});
- $('taskForm')?.addEventListener('submit',()=>setTimeout(()=>{fillChannels();renderDue()},120));
- $('taskList')?.addEventListener('click',()=>setTimeout(renderDue,80));
- document.addEventListener('click',e=>{const pub=e.target.closest('[data-publish-task]');if(pub){copyAndOpen(pub.dataset.publishTask);return}const done=e.target.closest('[data-confirm-posted]');if(done)confirmPosted(done.dataset.confirmPosted)});
- window.addEventListener('focus',()=>{fillChannels();checkDue();renderDue()});
- document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkDue();renderDue();fillChannels()}});
- setInterval(()=>{checkDue();renderDue()},15000);renderDue();checkDue();
-});
+
+function esc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;',
+    '"': '&quot;', "'": '&#39;'
+  })[c]);
+}
+
+function storyEpisodes(slot) {
+  if (slot.type === 'ready') {
+    return (get('readyMadeEpisodes', []) || [])
+      .filter(ep => {
+        const name = ep.story_title || ep.storyName || ep.title || 'Ready-made episodes';
+        const posted = String(ep.status || '').toLowerCase() === 'posted';
+        return name.toLowerCase() === String(slot.storyName || '').toLowerCase() && !posted;
+      })
+      .sort((a, b) =>
+        Number(a.season_number || 1) - Number(b.season_number || 1) ||
+        Number(a.episode_number || 1) - Number(b.episode_number || 1)
+      );
+  }
+
+  return (get('episodes', []) || [])
+    .filter(ep => {
+      const name = ep.storyTitle || ep.seasonTitle || '';
+      return !ep.archived &&
+        name.toLowerCase() === String(slot.storyName || '').toLowerCase();
+    })
+    .sort((a, b) =>
+      Number(a.seasonNumber || 1) - Number(b.seasonNumber || 1) ||
+      Number(a.episodeNumber || 1) - Number(b.episodeNumber || 1)
+    );
+}
+
+function getPosition(slot) {
+  return {
+    season: Number(slot.season || 1),
+    episode: Number(slot.episode || 1)
+  };
+}
+
+function findNextEpisode(slot) {
+  const position = getPosition(slot);
+  return storyEpisodes(slot).find(ep =>
+    Number(slot.type === 'ready' ? ep.season_number || 1 : ep.seasonNumber || 1) > position.season ||
+    (
+      Number(slot.type === 'ready' ? ep.season_number || 1 : ep.seasonNumber || 1) === position.season &&
+      Number(slot.type === 'ready' ? ep.episode_number || 1 : ep.episodeNumber || 1) >= position.episode
+    )
+  ) || null;
+}
+
+function episodeText(ep, type) {
+  if (type === 'ready') {
+    return [
+      ep.story_title || ep.storyName || '',
+      ep.episode_name || ep.title || '',
+      ep.episode_subtitle || '',
+      ep.episode_text || ep.content || ''
+    ].filter(Boolean).join('\n\n');
+  }
+
+  return [
+    ep.storyTitle || ep.seasonTitle || '',
+    ep.title || `Episode ${ep.episodeNumber || ''}`,
+    ep.content || ''
+  ].filter(Boolean).join('\n\n');
+}
+
+function episodeLabel(ep, type) {
+  const season = type === 'ready' ? ep.season_number || 1 : ep.seasonNumber || 1;
+  const number = type === 'ready' ? ep.episode_number || 1 : ep.episodeNumber || 1;
+  return `Season ${season} • Episode ${number}`;
+}
+
+function openChannel(url) {
+  if (!url) {
+    window.studioToast?.('Choose a WhatsApp Channel first.');
+    return false;
+  }
+
+  window.open(url, '_blank');
+  return true;
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (error) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+
+    let copied = false;
+    try {
+      copied = document.execCommand('copy');
+    } catch (_) {}
+
+    area.remove();
+    return copied;
+  }
+}
+
+function addPending(slotName, stage, ep) {
+  settings.pending = {
+    slot: slotName,
+    stage,
+    episodeId: ep.id,
+    startedAt: new Date().toISOString()
+  };
+
+  saveSettings();
+}
+
+function getPendingEpisode(slotName) {
+  const pending = settings.pending;
+  if (!pending || pending.slot !== slotName) return null;
+
+  const slot = settings.slots[slotName];
+  return storyEpisodes(slot).find(ep => String(ep.id) === String(pending.episodeId));
+}
+
+async function startAdvertisement(slotName) {
+  const slot = settings.slots[slotName];
+  const ep = findNextEpisode(slot);
+
+  if (!ep) {
+    window.studioToast?.('No unpublished episode remains in this queue.');
+    return;
+  }
+
+  if (!settings.adText.trim()) {
+    window.studioToast?.('Add your advertisement text first.');
+    return;
+  }
+
+  if (!slot.channelUrl) {
+    window.studioToast?.('Select a WhatsApp Channel for this queue.');
+    return;
+  }
+
+  const copied = await copyText(settings.adText);
+
+  if (!copied) {
+    window.prompt('Copy your advertisement text:', settings.adText);
+  }
+
+  addPending(slotName, 'advert', ep);
+  openChannel(slot.channelUrl);
+
+  renderPostingControls();
+  window.studioToast?.('Advertisement copied. Attach your poster and publish it in WhatsApp. Return here afterwards.');
+}
+
+async function prepareEpisode(slotName) {
+  const pending = settings.pending;
+
+  if (!pending || pending.slot !== slotName || pending.stage !== 'advert') {
+    window.studioToast?.('Prepare the advertisement first.');
+    return;
+  }
+
+  const slot = settings.slots[slotName];
+  const ep = getPendingEpisode(slotName);
+
+  if (!ep) {
+    window.studioToast?.('The selected episode could not be found.');
+    return;
+  }
+
+  const text = episodeText(ep, slot.type);
+  const copied = await copyText(text);
+
+  if (!copied) {
+    window.prompt('Copy your episode text:', text);
+  }
+
+  settings.pending.stage = 'episode';
+  settings.pending.episodeLabel = episodeLabel(ep, slot.type);
+  saveSettings();
+
+  openChannel(slot.channelUrl);
+  renderPostingControls();
+
+  window.studioToast?.('Episode copied. Publish it in WhatsApp, then return and confirm.');
+}
+
+function advancePosition(slot, ep) {
+  const season = Number(slot.type === 'ready'
+    ? ep.season_number || 1
+    : ep.seasonNumber || 1);
+
+  const episode = Number(slot.type === 'ready'
+    ? ep.episode_number || 1
+    : ep.episodeNumber || 1);
+
+  slot.season = season;
+  slot.episode = episode + 1;
+}
+
+function confirmEpisode(slotName) {
+  const pending = settings.pending;
+
+  if (!pending || pending.slot !== slotName || pending.stage !== 'episode') {
+    window.studioToast?.('There is no episode awaiting confirmation.');
+    return;
+  }
+
+  if (!confirm('Have you successfully published this episode in WhatsApp?')) return;
+
+  const slot = settings.slots[slotName];
+  const ep = getPendingEpisode(slotName);
+
+  if (!ep) {
+    window.studioToast?.('Episode not found. Nothing was marked complete.');
+    return;
+  }
+
+  const completed = settings.completed || {};
+  completed[slotName] = completed[slotName] || [];
+
+  if (!completed[slotName].some(item => String(item.episodeId) === String(ep.id))) {
+    completed[slotName].push({
+      episodeId: ep.id,
+      label: episodeLabel(ep, slot.type),
+      title: slot.storyName,
+      completedAt: new Date().toISOString()
+    });
+  }
+
+  settings.completed = completed;
+  advancePosition(slot, ep);
+  settings.pending = null;
+
+  saveSettings();
+
+  window.studioToast?.('Episode marked as posted. Queue advanced! ✅');
+  renderPostingControls();
+  document.dispatchEvent(new Event('planner:posts-updated'));
+}
+
+function cancelPending(slotName) {
+  if (!settings.pending || settings.pending.slot !== slotName) return;
+
+  if (!confirm('Cancel this pending posting sequence? The episode will remain unpublished.')) return;
+
+  settings.pending = null;
+  saveSettings();
+  renderPostingControls();
+}
+
+function renderPostingControls() {
+  SLOT_NAMES.forEach(slotName => {
+    const panel = document.querySelector(`[data-slot="${slotName}"]`);
+    if (!panel) return;
+
+    let controls = panel.querySelector('.planner-posting-controls');
+
+    if (!controls) {
+      controls = document.createElement('div');
+      controls.className = 'planner-posting-controls planner-slot-status';
+      panel.appendChild(controls);
+    }
+
+    const slot = settings.slots[slotName];
+    const pending = settings.pending;
+    const isPending = pending && pending.slot === slotName;
+    const ep = isPending ? getPendingEpisode(slotName) : findNextEpisode(slot);
+
+    if (!slot.storyName || !slot.channelUrl) {
+      controls.innerHTML = '<p class="small muted">Save a story and WhatsApp Channel to enable posting.</p>';
+      return;
+    }
+
+    if (!ep && !isPending) {
+      controls.innerHTML = '<p>🎉 No more unpublished episodes found for this queue.</p>';
+      return;
+    }
+
+    if (isPending && pending.stage === 'advert') {
+      controls.innerHTML = `
+        <p><strong>📢 Advertisement stage</strong></p>
+        <p class="small muted">Publish the advertisement in WhatsApp, return here, then prepare the episode.</p>
+        <button type="button" class="button primary" data-prepare-episode="${slotName}">📖 Prepare episode</button>
+        <button type="button" class="button ghost" data-cancel-sequence="${slotName}">Cancel sequence</button>
+      `;
+      return;
+    }
+
+    if (isPending && pending.stage === 'episode') {
+      controls.innerHTML = `
+        <p><strong>📖 Episode ready for confirmation</strong></p>
+        <p class="small muted">${esc(pending.episodeLabel || 'Episode')}</p>
+        <p class="small muted">Confirm only after publishing the episode in WhatsApp.</p>
+        <button type="button" class="button primary" data-confirm-episode="${slotName}">✅ I published this episode</button>
+        <button type="button" class="button ghost" data-cancel-sequence="${slotName}">Cancel sequence</button>
+      `;
+      return;
+    }
+
+    controls.innerHTML = `
+      <p><strong>Next episode: ${esc(episodeLabel(ep, slot.type))}</strong></p>
+      <button type="button" class="button primary" data-start-advert="${slotName}">📢 Prepare advertisement & open WhatsApp</button>
+    `;
+  });
+}
+
+function openPoster() {
+  const id = settings.mediaId;
+  if (!id) return null;
+
+  return new Promise(resolve => {
+    const request = indexedDB.open('channelStudioMediaDB', 1);
+
+    request.onerror = () => resolve(null);
+
+    request.onsuccess = () => {
+      mediaDB = request.result;
+
+      try {
+        const transaction = mediaDB.transaction('media', 'readonly');
+        const requestItem = transaction.objectStore('media').get(Number(id));
+
+        requestItem.onsuccess = () => {
+          const item = requestItem.result;
+          if (!item || !item.blob) {
+            resolve(null);
+            return;
+          }
+
+          const url = URL.createObjectURL(item.blob);
+          window.open(url, '_blank');
+          resolve(url);
+        };
+
+        requestItem.onerror = () => resolve(null);
+      } catch (error) {
+        resolve(null);
+      }
+    };
+  });
+}
+
+function bindEvents() {
+  document.addEventListener('click', event => {
+    const start = event.target.closest('[data-start-advert]');
+    if (start) {
+      startAdvertisement(start.dataset.startAdvert);
+      return;
+    }
+
+    const prepare = event.target.closest('[data-prepare-episode]');
+    if (prepare) {
+      prepareEpisode(prepare.dataset.prepareEpisode);
+      return;
+    }
+
+    const confirmButton = event.target.closest('[data-confirm-episode]');
+    if (confirmButton) {
+      confirmEpisode(confirmButton.dataset.confirmEpisode);
+      return;
+    }
+
+    const cancel = event.target.closest('[data-cancel-sequence]');
+    if (cancel) {
+      cancelPending(cancel.dataset.cancelSequence);
+    }
+  });
+
+  window.addEventListener('focus', renderPostingControls);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) renderPostingControls();
+  });
+
+  $('saveAllPlannerSlots')?.addEventListener('click', () => {
+    setTimeout(() => {
+      settings = readSettings();
+      renderPostingControls();
+    }, 100);
+  });
+}
+
+function init() {
+  if (!store()) return;
+
+  settings = readSettings();
+
+  if (!settings.slots) return;
+
+  SLOT_NAMES.forEach(name => {
+    if (!settings.slots[name]) return;
+
+    const slot = settings.slots[name];
+
+    if (slot.type !== 'ready') slot.type = 'serial';
+    slot.season = Math.max(1, Number(slot.season || 1));
+    slot.episode = Math.max(1, Number(slot.episode || 1));
+  });
+
+  bindEvents();
+  renderPostingControls();
+
+  console.log('Planner posting workflow loaded.');
+}
+
+document.addEventListener('DOMContentLoaded', init);
+
 })();
