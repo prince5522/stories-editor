@@ -1,3 +1,4 @@
+
 (function(){
 'use strict';
 
@@ -271,7 +272,6 @@ toast('Storage is full. Export a backup or shorten this story.');
 return;
 }
 
-/* Refresh existing generated episodes when an existing season is edited. */
 let refreshResult=null;
 if(old&&!isContinuation){
 refreshResult=syncEditedStoryEpisodes(record);
@@ -327,7 +327,6 @@ location.href=`episodes.html?story=${encodeURIComponent(story.id)}`;
 return;
 }
 
-/* Start a separate continuation manuscript without overwriting old text. */
 if(b.dataset.storyContinue){
 const progress=getStoryProgress(story.title);
 const season=Math.max(progress.season,Number(story.seasonNumber)||1);
@@ -590,7 +589,6 @@ archived:false
 };
 });
 
-/* Keep surplus episode IDs instead of deleting records that a planner may use. */
 const linkedIds=new Set(linked.map(ep=>String(ep.id)));
 const refreshedIds=new Set(refreshed.map(ep=>String(ep.id)));
 
@@ -645,10 +643,13 @@ $('savedEpisodeCount').textContent=
 
 if(!all.length){
 el.innerHTML='<div class="empty-state">No saved episodes match. Create a preview above and save the episodes you need.</div>';
+if(archived.length){
+el.innerHTML+='<p class="small muted">Archived episodes are still retained below.</p>';
+el.innerHTML+=renderArchivedEpisodes(archived);
+}
 return;
 }
 
-/* First level: story folders. */
 const stories=new Map();
 
 all.forEach(ep=>{
@@ -674,7 +675,6 @@ group.seasons.set(seasonNumber,[]);
 group.seasons.get(seasonNumber).push(ep);
 });
 
-/* Episode card with all existing actions. */
 function episodeCard(ep){
 return `
 <article class="list-item">
@@ -706,17 +706,13 @@ ${(ep.content||'').length>300?'…':''}
 </article>`;
 }
 
-/* Second level: season folders. */
-el.innerHTML=[...stories.entries()].map(([key,group])=>{
-const seasonFolders=[...group.seasons.entries()]
-.sort((a,b)=>a[0]-b[0])
-.map(([seasonNumber,eps])=>{
+function seasonFolder(seasonNumber,eps){
 eps.sort((a,b)=>
 (Number(a.episodeNumber)||0)-(Number(b.episodeNumber)||0)
 );
 
 return `
-<details class="episode-season-folder">
+<details class="rm-season-folder episode-season-folder">
 <summary>
 <b>📂 Season ${seasonNumber}</b>
 <span class="small muted">
@@ -728,13 +724,19 @@ ${eps.length} episode${eps.length===1?'':'s'}
 ${eps.map(episodeCard).join('')}
 </div>
 </details>`;
-}).join('');
+}
+
+el.innerHTML=[...stories.entries()].map(([key,group])=>{
+const seasonFolders=[...group.seasons.entries()]
+.sort((a,b)=>a[0]-b[0])
+.map(([seasonNumber,eps])=>seasonFolder(seasonNumber,eps))
+.join('');
 
 const total=[...group.seasons.values()]
 .reduce((sum,eps)=>sum+eps.length,0);
 
 return `
-<details class="story-folder episode-story-folder">
+<details class="rm-story-folder story-folder episode-story-folder">
 <summary>
 <b>📁 ${esc(group.name)}</b>
 <span class="small muted">
@@ -749,10 +751,14 @@ ${seasonFolders}
 </details>`;
 }).join('');
 
-/* Archived episodes are retained rather than deleted. */
 if(archived.length){
-el.innerHTML+=`
-<details class="episode-season-folder">
+el.innerHTML+=renderArchivedEpisodes(archived);
+}
+}
+
+function renderArchivedEpisodes(archived){
+return `
+<details class="rm-season-folder episode-season-folder archived-episodes-folder">
 <summary>
 <b>🗄️ Archived episodes</b>
 <span class="small muted">
@@ -761,10 +767,18 @@ ${archived.length} episode${archived.length===1?'':'s'}
 </summary>
 
 <div class="episode-folder-items">
-${archived.map(episodeCard).join('')}
+${archived.map(ep=>`
+<article class="list-item">
+<p class="episode-number">📖 ${esc(ep.storyTitle||ep.seasonTitle||'Story')} · S${String(ep.seasonNumber||1).padStart(2,'0')}E${String(ep.episodeNumber||'—').padStart(2,'0')}</p>
+<h3>${esc(ep.title)}</h3>
+<p class="small muted">${esc(ep.archivedReason||'Archived episode')}</p>
+<div class="item-actions">
+<button class="button ghost" data-episode-open="${esc(ep.id)}">Read</button>
+</div>
+</article>
+`).join('')}
 </div>
 </details>`;
-}
 }
 
 function initEpisodes(){
@@ -825,7 +839,6 @@ toast('Coverage check failed. No episodes were created. Please reopen and save t
 return;
 }
 
-/* Continue from the last episode saved for this story title. */
 const start=getNextEpisodePosition(story.title,story.seasonNumber);
 
 episodeDraft=split.chunks.map((content,i)=>{
