@@ -4,11 +4,10 @@
 const KEY = 'storySlotPlannerV1';
 const $ = id => document.getElementById(id);
 const store = () => window.StudioStore;
-
 const SLOT_NAMES = ['morning', 'lunch', 'evening'];
+
 let settings = null;
-let activeSlot = null;
-let mediaDB = null;
+let returnCheckLock = false;
 
 function get(key, fallback) {
   return store().get(key, fallback);
@@ -28,9 +27,36 @@ function saveSettings() {
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;',
-    '"': '&quot;', "'": '&#39;'
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
   })[c]);
+}
+
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function isSlotDue(slot) {
+  if (!slot || !slot.time) return false;
+
+  const parts = String(slot.time).split(':');
+  const hour = Number(parts[0]);
+  const minute = Number(parts[1]);
+
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return false;
+
+  const scheduled = new Date();
+  scheduled.setHours(hour, minute, 0, 0);
+
+  return new Date() >= scheduled;
+}
+
+function alreadyCompletedToday(slotName) {
+  return settings.slotRuns?.[slotName] === todayKey();
 }
 
 function storyEpisodes(slot) {
@@ -38,8 +64,9 @@ function storyEpisodes(slot) {
     return (get('readyMadeEpisodes', []) || [])
       .filter(ep => {
         const name = ep.story_title || ep.storyName || ep.title || 'Ready-made episodes';
-        const posted = String(ep.status || '').toLowerCase() === 'posted';
-        return name.toLowerCase() === String(slot.storyName || '').toLowerCase() && !posted;
+
+        return name.toLowerCase() === String(slot.storyName || '').toLowerCase() &&
+          String(ep.status || '').toLowerCase() !== 'posted';
       })
       .sort((a, b) =>
         Number(a.season_number || 1) - Number(b.season_number || 1) ||
@@ -50,6 +77,7 @@ function storyEpisodes(slot) {
   return (get('episodes', []) || [])
     .filter(ep => {
       const name = ep.storyTitle || ep.seasonTitle || '';
+
       return !ep.archived &&
         name.toLowerCase() === String(slot.storyName || '').toLowerCase();
     })
@@ -68,36 +96,61 @@ function getPosition(slot) {
 
 function findNextEpisode(slot) {
   const position = getPosition(slot);
-  return storyEpisodes(slot).find(ep =>
-    Number(slot.type === 'ready' ? ep.season_number || 1 : ep.seasonNumber || 1) > position.season ||
-    (
-      Number(slot.type === 'ready' ? ep.season_number || 1 : ep.seasonNumber || 1) === position.season &&
-      Number(slot.type === 'ready' ? ep.episode_number || 1 : ep.episodeNumber || 1) >= position.episode
-    )
-  ) || null;
+
+  return storyEpisodes(slot).find(ep => {
+    const season = Number(slot.type === 'ready'
+      ? ep.season_number || 1
+      : ep.seasonNumber || 1);
+
+    const episode = Number(slot.type === 'ready'
+      ? ep.episode_number || 1
+      : ep.episodeNumber || 1);
+
+    return season > position.season ||
+      (season === position.season && episode >= position.episode);
+  }) || null;
+}
+
+function episodeLabel(ep, type) {
+  const season = type === 'ready'
+    ? ep.season_number || 1
+    : ep.seasonNumber || 1;
+
+  const number = type === 'ready'
+    ? ep.episode_number || 1
+    : ep.episodeNumber || 1;
+
+  return `Season ${season} • Episode ${number}`;
 }
 
 function episodeText(ep, type) {
   if (type === 'ready') {
+    const storyName = ep.story_title || ep.storyName || 'Untitled story';
+
     return [
-      ep.story_title || ep.storyName || '',
+      storyName,
+      `🌿 SEASON ${String(ep.season_number || 1).padStart(2, '0')} 🌿`,
+      `🎬 EPISODE ${String(ep.episode_number || 1).padStart(2, '0')} ✨`,
       ep.episode_name || ep.title || '',
       ep.episode_subtitle || '',
-      ep.episode_text || ep.content || ''
+      ep.episode_text || ep.content || '',
+      '🔔 TO BE CONTINUED…',
+      '❤️ React for more stories! 🔥'
     ].filter(Boolean).join('\n\n');
   }
 
-  return [
-    ep.storyTitle || ep.seasonTitle || '',
-    ep.title || `Episode ${ep.episodeNumber || ''}`,
-    ep.content || ''
-  ].filter(Boolean).join('\n\n');
-}
+  if (window.buildEpisodeShareText) {
+    return window.buildEpisodeShareText(ep);
+  }
 
-function episodeLabel(ep, type) {
-  const season = type === 'ready' ? ep.season_number || 1 : ep.seasonNumber || 1;
-  const number = type === 'ready' ? ep.episode_number || 1 : ep.episodeNumber || 1;
-  return `Season ${season} • Episode ${number}`;
+  return [
+    ep.storyTitle || ep.seasonTitle || 'Untitled story',
+    `🌿 SEASON ${String(ep.seasonNumber || 1).padStart(2, '0')} 🌿`,
+    `🎬 EPISODE ${String(ep.episodeNumber || 1).padStart(2, '0')} ✨`,
+    ep.content || '',
+    '🔔 TO BE CONTINUED…',
+    '❤️ React for more stories! 🔥'
+  ].join('\n\n');
 }
 
 function openChannel(url) {
@@ -106,7 +159,12 @@ function openChannel(url) {
     return false;
   }
 
-  window.open(url, '_blank');
+  const opened = window.open(url, '_blank');
+
+  if (!opened) {
+    window.studioToast?.('If WhatsApp did not open, use your channel link manually.');
+  }
+
   return true;
 }
 
@@ -119,10 +177,12 @@ async function copyText(text) {
     area.value = text;
     area.style.position = 'fixed';
     area.style.opacity = '0';
+
     document.body.appendChild(area);
     area.select();
 
     let copied = false;
+
     try {
       copied = document.execCommand('copy');
     } catch (_) {}
@@ -132,27 +192,50 @@ async function copyText(text) {
   }
 }
 
-function addPending(slotName, stage, ep) {
+function getPendingEpisode(slotName) {
+  const pending = settings.pending;
+
+  if (!pending || pending.slot !== slotName) return null;
+
+  const slot = settings.slots[slotName];
+
+  return storyEpisodes(slot).find(ep =>
+    String(ep.id) === String(pending.episodeId)
+  );
+}
+
+function setPending(slotName, stage, ep) {
   settings.pending = {
     slot: slotName,
     stage,
     episodeId: ep.id,
-    startedAt: new Date().toISOString()
+    episodeLabel: episodeLabel(ep, settings.slots[slotName].type),
+    startedAt: new Date().toISOString(),
+    leftAppAt: null,
+    returnPrompted: false
   };
 
   saveSettings();
 }
 
-function getPendingEpisode(slotName) {
-  const pending = settings.pending;
-  if (!pending || pending.slot !== slotName) return null;
-
-  const slot = settings.slots[slotName];
-  return storyEpisodes(slot).find(ep => String(ep.id) === String(pending.episodeId));
-}
-
 async function startAdvertisement(slotName) {
   const slot = settings.slots[slotName];
+
+  if (!isSlotDue(slot)) {
+    window.studioToast?.(`This slot becomes available at ${slot.time}.`);
+    return;
+  }
+
+  if (alreadyCompletedToday(slotName)) {
+    window.studioToast?.('This slot has already been completed today.');
+    return;
+  }
+
+  if (settings.pending) {
+    window.studioToast?.('Finish or cancel the current posting sequence first.');
+    return;
+  }
+
   const ep = findNextEpisode(slot);
 
   if (!ep) {
@@ -160,7 +243,9 @@ async function startAdvertisement(slotName) {
     return;
   }
 
-  if (!settings.adText.trim()) {
+  const advert = String(settings.adText || '').trim();
+
+  if (!advert) {
     window.studioToast?.('Add your advertisement text first.');
     return;
   }
@@ -170,24 +255,54 @@ async function startAdvertisement(slotName) {
     return;
   }
 
-  const copied = await copyText(settings.adText);
+  setPending(slotName, 'advert-opened', ep);
 
-  if (!copied) {
-    window.prompt('Copy your advertisement text:', settings.adText);
-  }
-
-  addPending(slotName, 'advert', ep);
   openChannel(slot.channelUrl);
 
+  const copied = await copyText(advert);
+
+  if (!copied) {
+    window.prompt('Copy your advertisement text:', advert);
+  }
+
   renderPostingControls();
-  window.studioToast?.('Advertisement copied. Attach your poster and publish it in WhatsApp. Return here afterwards.');
+
+  window.studioToast?.('Advertisement copied. Publish it in WhatsApp, then return here.');
+}
+
+function confirmAdvertisement(slotName) {
+  const pending = settings.pending;
+
+  if (!pending ||
+      pending.slot !== slotName ||
+      pending.stage !== 'advert-opened') {
+    return;
+  }
+
+  if (!confirm('Have you published the advertisement in your WhatsApp Channel?')) {
+    pending.returnPrompted = true;
+    saveSettings();
+    renderPostingControls();
+    return;
+  }
+
+  pending.stage = 'advert-confirmed';
+  pending.returnPrompted = false;
+  pending.leftAppAt = null;
+
+  saveSettings();
+  renderPostingControls();
+
+  window.studioToast?.('Advertisement confirmed. You can now prepare the episode.');
 }
 
 async function prepareEpisode(slotName) {
   const pending = settings.pending;
 
-  if (!pending || pending.slot !== slotName || pending.stage !== 'advert') {
-    window.studioToast?.('Prepare the advertisement first.');
+  if (!pending ||
+      pending.slot !== slotName ||
+      pending.stage !== 'advert-confirmed') {
+    window.studioToast?.('Publish and confirm the advertisement first.');
     return;
   }
 
@@ -200,20 +315,25 @@ async function prepareEpisode(slotName) {
   }
 
   const text = episodeText(ep, slot.type);
+
+  pending.stage = 'episode-opened';
+  pending.episodeLabel = episodeLabel(ep, slot.type);
+  pending.leftAppAt = null;
+  pending.returnPrompted = false;
+
+  saveSettings();
+
+  openChannel(slot.channelUrl);
+
   const copied = await copyText(text);
 
   if (!copied) {
     window.prompt('Copy your episode text:', text);
   }
 
-  settings.pending.stage = 'episode';
-  settings.pending.episodeLabel = episodeLabel(ep, slot.type);
-  saveSettings();
-
-  openChannel(slot.channelUrl);
   renderPostingControls();
 
-  window.studioToast?.('Episode copied. Publish it in WhatsApp, then return and confirm.');
+  window.studioToast?.('Episode copied. Publish it in WhatsApp, then return here and confirm.');
 }
 
 function advancePosition(slot, ep) {
@@ -225,19 +345,43 @@ function advancePosition(slot, ep) {
     ? ep.episode_number || 1
     : ep.episodeNumber || 1);
 
-  slot.season = season;
-  slot.episode = episode + 1;
+  if (episode >= 13) {
+    slot.season = season + 1;
+    slot.episode = 1;
+  } else {
+    slot.season = season;
+    slot.episode = episode + 1;
+  }
+}
+
+function markReadyMadePosted(ep) {
+  const all = get('readyMadeEpisodes', []);
+
+  const index = all.findIndex(item =>
+    String(item.id) === String(ep.id)
+  );
+
+  if (index < 0) return;
+
+  all[index].status = 'posted';
+  all[index].posted_at = new Date().toISOString();
+
+  save('readyMadeEpisodes', all);
 }
 
 function confirmEpisode(slotName) {
   const pending = settings.pending;
 
-  if (!pending || pending.slot !== slotName || pending.stage !== 'episode') {
+  if (!pending ||
+      pending.slot !== slotName ||
+      pending.stage !== 'episode-opened') {
     window.studioToast?.('There is no episode awaiting confirmation.');
     return;
   }
 
-  if (!confirm('Have you successfully published this episode in WhatsApp?')) return;
+  if (!confirm('Have you successfully published this episode in WhatsApp?')) {
+    return;
+  }
 
   const slot = settings.slots[slotName];
   const ep = getPendingEpisode(slotName);
@@ -248,9 +392,11 @@ function confirmEpisode(slotName) {
   }
 
   const completed = settings.completed || {};
+
   completed[slotName] = completed[slotName] || [];
 
-  if (!completed[slotName].some(item => String(item.episodeId) === String(ep.id))) {
+  if (!completed[slotName].some(item =>
+    String(item.episodeId) === String(ep.id))) {
     completed[slotName].push({
       episodeId: ep.id,
       label: episodeLabel(ep, slot.type),
@@ -260,29 +406,78 @@ function confirmEpisode(slotName) {
   }
 
   settings.completed = completed;
+  settings.slotRuns = settings.slotRuns || {};
+  settings.slotRuns[slotName] = todayKey();
+
+  if (slot.type === 'ready') {
+    markReadyMadePosted(ep);
+  }
+
   advancePosition(slot, ep);
+
   settings.pending = null;
 
   saveSettings();
 
   window.studioToast?.('Episode marked as posted. Queue advanced! ✅');
+
   renderPostingControls();
+
   document.dispatchEvent(new Event('planner:posts-updated'));
+}
+
+function handleReturnFromWhatsApp() {
+  if (returnCheckLock || document.hidden) return;
+
+  const pending = settings?.pending;
+
+  if (!pending ||
+      !pending.leftAppAt ||
+      pending.returnPrompted) {
+    renderPostingControls();
+    return;
+  }
+
+  returnCheckLock = true;
+
+  pending.returnPrompted = true;
+  saveSettings();
+
+  setTimeout(() => {
+    const current = settings.pending;
+
+    if (current && current.leftAppAt) {
+      if (current.stage === 'advert-opened') {
+        confirmAdvertisement(current.slot);
+      } else if (current.stage === 'episode-opened') {
+        confirmEpisode(current.slot);
+      }
+    }
+
+    returnCheckLock = false;
+    renderPostingControls();
+  }, 350);
 }
 
 function cancelPending(slotName) {
   if (!settings.pending || settings.pending.slot !== slotName) return;
 
-  if (!confirm('Cancel this pending posting sequence? The episode will remain unpublished.')) return;
+  if (!confirm('Cancel this pending posting sequence? The episode will remain unpublished.')) {
+    return;
+  }
 
   settings.pending = null;
+
   saveSettings();
   renderPostingControls();
 }
 
 function renderPostingControls() {
+  if (!settings?.slots) return;
+
   SLOT_NAMES.forEach(slotName => {
     const panel = document.querySelector(`[data-slot="${slotName}"]`);
+
     if (!panel) return;
 
     let controls = panel.querySelector('.planner-posting-controls');
@@ -294,37 +489,71 @@ function renderPostingControls() {
     }
 
     const slot = settings.slots[slotName];
+
+    if (!slot) return;
+
     const pending = settings.pending;
     const isPending = pending && pending.slot === slotName;
-    const ep = isPending ? getPendingEpisode(slotName) : findNextEpisode(slot);
+
+    const ep = isPending
+      ? getPendingEpisode(slotName)
+      : findNextEpisode(slot);
 
     if (!slot.storyName || !slot.channelUrl) {
-      controls.innerHTML = '<p class="small muted">Save a story and WhatsApp Channel to enable posting.</p>';
+      controls.innerHTML =
+        '<p class="small muted">Save a story and WhatsApp Channel to enable posting.</p>';
       return;
     }
 
-    if (!ep && !isPending) {
-      controls.innerHTML = '<p>🎉 No more unpublished episodes found for this queue.</p>';
-      return;
-    }
-
-    if (isPending && pending.stage === 'advert') {
+    if (isPending && pending.stage === 'advert-opened') {
       controls.innerHTML = `
         <p><strong>📢 Advertisement stage</strong></p>
-        <p class="small muted">Publish the advertisement in WhatsApp, return here, then prepare the episode.</p>
-        <button type="button" class="button primary" data-prepare-episode="${slotName}">📖 Prepare episode</button>
+        <p class="small muted">Publish the advert in WhatsApp. Return here to confirm it.</p>
+        <button type="button" class="button primary" data-confirm-advert="${slotName}">✅ I’m back — confirm advert</button>
         <button type="button" class="button ghost" data-cancel-sequence="${slotName}">Cancel sequence</button>
       `;
       return;
     }
 
-    if (isPending && pending.stage === 'episode') {
+    if (isPending && pending.stage === 'advert-confirmed') {
       controls.innerHTML = `
-        <p><strong>📖 Episode ready for confirmation</strong></p>
+        <p><strong>✅ Advertisement confirmed</strong></p>
+        <p class="small muted">The episode is now unlocked: ${esc(pending.episodeLabel || '')}</p>
+        <button type="button" class="button primary" data-prepare-episode="${slotName}">📖 Prepare episode & open WhatsApp</button>
+        <button type="button" class="button ghost" data-cancel-sequence="${slotName}">Cancel sequence</button>
+      `;
+      return;
+    }
+
+    if (isPending && pending.stage === 'episode-opened') {
+      controls.innerHTML = `
+        <p><strong>📖 Episode awaiting confirmation</strong></p>
         <p class="small muted">${esc(pending.episodeLabel || 'Episode')}</p>
-        <p class="small muted">Confirm only after publishing the episode in WhatsApp.</p>
+        <p class="small muted">Confirm after publishing the episode in WhatsApp.</p>
         <button type="button" class="button primary" data-confirm-episode="${slotName}">✅ I published this episode</button>
         <button type="button" class="button ghost" data-cancel-sequence="${slotName}">Cancel sequence</button>
+      `;
+      return;
+    }
+
+    if (!ep) {
+      controls.innerHTML =
+        '<p>🎉 No more unpublished episodes found for this queue.</p>';
+      return;
+    }
+
+    if (alreadyCompletedToday(slotName)) {
+      controls.innerHTML = `
+        <p><strong>✅ Today’s slot is complete</strong></p>
+        <p class="small muted">The next episode will be available tomorrow at ${esc(slot.time || 'the scheduled time')}.</p>
+      `;
+      return;
+    }
+
+    if (!isSlotDue(slot)) {
+      controls.innerHTML = `
+        <p><strong>Next episode: ${esc(episodeLabel(ep, slot.type))}</strong></p>
+        <p class="small muted">Posting unlocks at ${esc(slot.time || 'the scheduled time')}.</p>
       `;
       return;
     }
@@ -336,78 +565,70 @@ function renderPostingControls() {
   });
 }
 
-function openPoster() {
-  const id = settings.mediaId;
-  if (!id) return null;
-
-  return new Promise(resolve => {
-    const request = indexedDB.open('channelStudioMediaDB', 1);
-
-    request.onerror = () => resolve(null);
-
-    request.onsuccess = () => {
-      mediaDB = request.result;
-
-      try {
-        const transaction = mediaDB.transaction('media', 'readonly');
-        const requestItem = transaction.objectStore('media').get(Number(id));
-
-        requestItem.onsuccess = () => {
-          const item = requestItem.result;
-          if (!item || !item.blob) {
-            resolve(null);
-            return;
-          }
-
-          const url = URL.createObjectURL(item.blob);
-          window.open(url, '_blank');
-          resolve(url);
-        };
-
-        requestItem.onerror = () => resolve(null);
-      } catch (error) {
-        resolve(null);
-      }
-    };
-  });
-}
-
 function bindEvents() {
   document.addEventListener('click', event => {
     const start = event.target.closest('[data-start-advert]');
+
     if (start) {
       startAdvertisement(start.dataset.startAdvert);
       return;
     }
 
+    const advert = event.target.closest('[data-confirm-advert]');
+
+    if (advert) {
+      confirmAdvertisement(advert.dataset.confirmAdvert);
+      return;
+    }
+
     const prepare = event.target.closest('[data-prepare-episode]');
+
     if (prepare) {
       prepareEpisode(prepare.dataset.prepareEpisode);
       return;
     }
 
     const confirmButton = event.target.closest('[data-confirm-episode]');
+
     if (confirmButton) {
       confirmEpisode(confirmButton.dataset.confirmEpisode);
       return;
     }
 
     const cancel = event.target.closest('[data-cancel-sequence]');
+
     if (cancel) {
       cancelPending(cancel.dataset.cancelSequence);
     }
   });
 
-  window.addEventListener('focus', renderPostingControls);
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) renderPostingControls();
+    if (document.hidden) {
+      const pending = settings?.pending;
+
+      if (pending &&
+          ['advert-opened', 'episode-opened'].includes(pending.stage)) {
+        pending.leftAppAt = Date.now();
+        pending.returnPrompted = false;
+        saveSettings();
+      }
+    } else {
+      handleReturnFromWhatsApp();
+    }
   });
+
+  window.addEventListener('focus', handleReturnFromWhatsApp);
 
   $('saveAllPlannerSlots')?.addEventListener('click', () => {
     setTimeout(() => {
       settings = readSettings();
       renderPostingControls();
-    }, 100);
+    }, 150);
+  });
+
+  window.addEventListener('pageshow', () => {
+    settings = readSettings();
+    renderPostingControls();
   });
 }
 
@@ -418,20 +639,33 @@ function init() {
 
   if (!settings.slots) return;
 
+  settings.completed = settings.completed || {};
+  settings.slotRuns = settings.slotRuns || {};
+
   SLOT_NAMES.forEach(name => {
     if (!settings.slots[name]) return;
 
     const slot = settings.slots[name];
 
-    if (slot.type !== 'ready') slot.type = 'serial';
+    if (slot.type !== 'ready') {
+      slot.type = 'serial';
+    }
+
     slot.season = Math.max(1, Number(slot.season || 1));
     slot.episode = Math.max(1, Number(slot.episode || 1));
   });
 
+  saveSettings();
+
   bindEvents();
   renderPostingControls();
 
-  console.log('Planner posting workflow loaded.');
+  window.setInterval(() => {
+    settings = readSettings();
+    renderPostingControls();
+  }, 15000);
+
+  console.log('Timed Planner posting workflow loaded.');
 }
 
 document.addEventListener('DOMContentLoaded', init);
