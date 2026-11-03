@@ -311,3 +311,65 @@ body[data-theme="dark"] .account-add-button {
   }
 }
 
+/* Story Studio — Story Library button styling */
+.story-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.story-actions .btn,
+.preview-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 15px;
+  border: 1px solid var(--line, #e4e9f2);
+  border-radius: 12px;
+  background: var(--panel, #fff);
+  color: var(--text, #172033);
+  font-weight: 750;
+  cursor: pointer;
+  transition: .2s ease;
+}
+
+.story-actions .btn:hover,
+.preview-actions .btn:hover {
+  transform: translateY(-2px);
+  border-color: #0bc49a;
+}
+
+.story-actions .btn-primary,
+.preview-actions .btn-primary {
+  background: linear-gradient(135deg, #0bc49a, #087dce);
+  color: #fff;
+  border-color: transparent;
+}
+
+.story-actions .btn-danger {
+  background: #fff0f0;
+  color: #b42318;
+  border-color: #f3caca;
+}
+
+body[data-theme="dark"] .story-actions .btn,
+body[data-theme="dark"] .preview-actions .btn {
+  background: #202d41;
+  color: #f1f5fb;
+  border-color: #35465d;
+}
+
+body[data-theme="dark"] .story-actions .btn-primary,
+body[data-theme="dark"] .preview-actions .btn-primary {
+  background: linear-gradient(135deg, #0bc49a, #087dce);
+  color: #fff;
+}
+
+@media (max-width: 520px) {
+  .story-actions .btn {
+    flex: 1 1 140px;
+  }
+}
