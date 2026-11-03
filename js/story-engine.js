@@ -650,13 +650,18 @@ el.innerHTML+=renderArchivedEpisodes(archived);
 return;
 }
 
+/*
+IMPORTANT FOLDER FIX:
+Use the normalized story title as the folder key.
+Do not use storyId here: every uploaded manuscript can have
+a different ID even when it belongs to the same story.
+The original storyId is retained in episode data.
+*/
 const stories=new Map();
 
 all.forEach(ep=>{
 const storyName=String(ep.storyTitle||ep.seasonTitle||'Story').trim()||'Story';
-const storyKey=ep.storyId
-?'id:'+String(ep.storyId)
-:'title:'+normalTitle(storyName);
+const storyKey='title:'+normalTitle(storyName);
 
 if(!stories.has(storyKey)){
 stories.set(storyKey,{
