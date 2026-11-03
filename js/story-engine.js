@@ -1,4 +1,3 @@
-
 (function(){
 'use strict';
 
@@ -20,7 +19,15 @@ function normalTitle(value){
 return String(value||'').trim().toLowerCase().replace(/\s+/g,' ');
 }
 
-/* Finds the latest saved episode position for a story. */
+/* Strong folder identity: ignores emojis, punctuation and invisible characters. */
+function folderTitleKey(value){
+return String(value||'')
+.normalize('NFKC')
+.toLowerCase()
+.replace(/[\u200B-\u200D\uFEFF\uFE0E\uFE0F]/g,'')
+.replace(/[^\p{L}\p{N}]+/gu,'');
+}
+
 function getStoryProgress(title){
 const key=normalTitle(title);
 const episodes=get('episodes').filter(ep=>
@@ -524,7 +531,6 @@ last:w.slice(-8).join(' ')
 };
 }
 
-/* Refresh only episodes generated from an edited saved season. */
 function syncEditedStoryEpisodes(story){
 const allEpisodes=get('episodes');
 
@@ -615,7 +621,6 @@ archived:surplus.length
 };
 }
 
-/* Builds the complete WhatsApp-ready message. */
 function buildEpisodeShareText(ep){
 const storyName=String(ep.storyTitle||ep.seasonTitle||'Untitled story').trim();
 const seasonNumber=Math.max(1,Number(ep.seasonNumber)||1);
@@ -650,18 +655,12 @@ el.innerHTML+=renderArchivedEpisodes(archived);
 return;
 }
 
-/*
-IMPORTANT FOLDER FIX:
-Use the normalized story title as the folder key.
-Do not use storyId here: every uploaded manuscript can have
-a different ID even when it belongs to the same story.
-The original storyId is retained in episode data.
-*/
+/* Group by normalized title, NOT by manuscript storyId. */
 const stories=new Map();
 
 all.forEach(ep=>{
 const storyName=String(ep.storyTitle||ep.seasonTitle||'Story').trim()||'Story';
-const storyKey='title:'+normalTitle(storyName);
+const storyKey='title:'+folderTitleKey(storyName);
 
 if(!stories.has(storyKey)){
 stories.set(storyKey,{
@@ -687,20 +686,16 @@ return `
 📖 ${esc(ep.storyTitle||ep.seasonTitle||'Story')}
 · S${String(ep.seasonNumber||1).padStart(2,'0')}E${String(ep.episodeNumber||'—').padStart(2,'0')}
 </p>
-
 <h3>${esc(ep.title)}</h3>
-
 <p class="small muted">
 ${(ep.content||'').length.toLocaleString()} characters
 · ${trueWordCount(ep.content||'').toLocaleString()} words
 · ${esc(ep.date||'Saved locally')}
 </p>
-
 <div class="episode-content-preview">
 ${esc((ep.content||'').slice(0,300))}
 ${(ep.content||'').length>300?'…':''}
 </div>
-
 <div class="item-actions">
 <button class="button primary" data-episode-post="${esc(ep.id)}">📤 Post / Share</button>
 <button class="button ghost" data-episode-copy="${esc(ep.id)}">📋 Copy text</button>
@@ -720,11 +715,8 @@ return `
 <details class="rm-season-folder episode-season-folder">
 <summary>
 <b>📂 Season ${seasonNumber}</b>
-<span class="small muted">
-${eps.length} episode${eps.length===1?'':'s'}
-</span>
+<span class="small muted">${eps.length} episode${eps.length===1?'':'s'}</span>
 </summary>
-
 <div class="episode-folder-items">
 ${eps.map(episodeCard).join('')}
 </div>
@@ -749,7 +741,6 @@ ${group.seasons.size} season${group.seasons.size===1?'':'s'}
 · ${total} episodes
 </span>
 </summary>
-
 <div class="episode-story-items">
 ${seasonFolders}
 </div>
@@ -766,11 +757,8 @@ return `
 <details class="rm-season-folder episode-season-folder archived-episodes-folder">
 <summary>
 <b>🗄️ Archived episodes</b>
-<span class="small muted">
-${archived.length} episode${archived.length===1?'':'s'}
-</span>
+<span class="small muted">${archived.length} episode${archived.length===1?'':'s'}</span>
 </summary>
-
 <div class="episode-folder-items">
 ${archived.map(ep=>`
 <article class="list-item">
@@ -898,7 +886,6 @@ $('episodePreview').innerHTML=
 ' · complete: true</p></div>'+
 episodeDraft.map(ep=>{
 const meta=episodeMetadata(ep.content);
-
 return '<article class="list-item">'+
 '<p class="episode-number">📁 Season '+ep.seasonNumber+' · Episode '+ep.episodeNumber+' of 13</p>'+
 '<h3>'+esc(ep.title)+'</h3>'+
@@ -967,7 +954,6 @@ if(!ep)return;
 const episodeText=String(ep.content||'');
 const shareText=buildEpisodeShareText(ep);
 
-/* COPY */
 if(b.dataset.episodeCopy){
 if(!episodeText.trim()){
 toast('This episode has no text.');
@@ -994,7 +980,6 @@ toast(copied?
 return;
 }
 
-/* SHARE */
 if(b.dataset.episodePost){
 if(!episodeText.trim()){
 toast('This episode has no text.');
@@ -1022,7 +1007,6 @@ toast('Sharing failed. Try the Copy text option.');
 return;
 }
 
-/* READ */
 if(b.dataset.episodeOpen){
 readerEpisodeId=ep.id;
 $('episodeReaderTitle').textContent=ep.title;
@@ -1034,7 +1018,6 @@ $('episodeReaderPanel').scrollIntoView({behavior:'smooth'});
 return;
 }
 
-/* RENAME */
 if(b.dataset.episodeEdit){
 const title=prompt('Enter a new episode title:',ep.title);
 if(title===null)return;
@@ -1051,7 +1034,6 @@ toast('Episode renamed.');
 return;
 }
 
-/* DELETE */
 if(b.dataset.episodeDelete&&confirm(`Delete “${ep.title}”?`)){
 set('episodes',all.filter(x=>String(x.id)!==String(id)));
 renderSavedEpisodes();
