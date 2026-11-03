@@ -1,38 +1,253 @@
 <!doctype html>
 <html lang="en" data-theme="system">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <script src="js/app-shell-behavior.js"></script><meta name="theme-color" content="#101827"><meta name="description" content="Schedule reminders for your publishing routine."><title>Planner — Channel Studio</title><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="css/styles.css"><link rel="stylesheet" href="css/animations.css">
-<link rel="stylesheet" href="css/themes.css"><link rel="stylesheet" href="css/whatsapp-shell.css"></head>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<script src="js/app-shell-behavior.js"></script>
+<meta name="theme-color" content="#101827">
+<meta name="description" content="Manage your independent story posting queues.">
+<title>Story Planner — Channel Studio</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/animations.css">
+<link rel="stylesheet" href="css/themes.css">
+<link rel="stylesheet" href="css/whatsapp-shell.css">
+
+<style>
+.planner-intro{margin-bottom:22px}
+.planner-advert-grid{display:grid;grid-template-columns:1fr;gap:14px}
+.planner-slots{display:grid;grid-template-columns:1fr;gap:18px}
+.planner-slot{overflow:hidden}
+.planner-slot-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.planner-slot-head h2{margin:0}
+.planner-slot-icon{font-size:1.8rem}
+.planner-fields{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.planner-fields label{display:flex;flex-direction:column;gap:7px}
+.planner-fields .full{grid-column:1/-1}
+.planner-fields input,.planner-fields select,.planner-advert-grid textarea{width:100%;min-width:0}
+.planner-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.planner-note{margin-top:12px}
+.planner-slot-status{margin-top:12px;padding:12px;border-radius:12px;background:var(--surface-2,rgba(127,127,127,.10))}
+.planner-empty{padding:14px;border:1px dashed var(--border-color,rgba(127,127,127,.35));border-radius:12px}
+#taskMediaPreview img,#taskMediaPreview video{display:block;width:100%;max-height:230px;object-fit:contain;border-radius:12px;margin-top:10px}
+@media(min-width:850px){.planner-slots{grid-template-columns:repeat(2,minmax(0,1fr))}.planner-advert-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.planner-fields{grid-template-columns:1fr}.planner-fields .full{grid-column:auto}.planner-slot-head{align-items:flex-start}}
+</style>
+</head>
+
 <body data-page="planner">
 <div class="app-layout">
-<aside class="sidebar"><a class="brand" href="home.html"><span class="brand-mark small-mark">CS</span><span>Channel<span class="brand-accent">Studio</span><small>YOUR CREATOR SPACE</small></span></a><nav class="main-nav" aria-label="Main navigation"><a class="nav-link " href="home.html"><span>⌂</span><b>Home</b></a>
-<a class="nav-link " href="stories.html"><span>▤</span><b>Stories</b></a>
-<a class="nav-link " href="episodes.html"><span>▥</span><b>Episodes</b></a>
+<aside class="sidebar">
+<a class="brand" href="home.html">
+<span class="brand-mark small-mark">CS</span>
+<span>Channel<span class="brand-accent">Studio</span><small>YOUR CREATOR SPACE</small></span>
+</a>
+<nav class="main-nav" aria-label="Main navigation">
+<a class="nav-link" href="home.html"><span>⌂</span><b>Home</b></a>
+<a class="nav-link" href="stories.html"><span>▤</span><b>Stories</b></a>
+<a class="nav-link" href="episodes.html"><span>▥</span><b>Episodes</b></a>
 <a class="nav-link" href="ready-made.html"><span>✍</span><b>Ready-Made Episodes</b></a>
 <a class="nav-link active" href="planner.html"><span>◷</span><b>Planner</b></a>
-<a class="nav-link " href="hype.html"><span>↗</span><b>Hype</b></a>
-<a class="nav-link " href="media.html"><span>▣</span><b>Media Library</b></a>
+<a class="nav-link" href="hype.html"><span>↗</span><b>Hype</b></a>
+<a class="nav-link" href="media.html"><span>▣</span><b>Media Library</b></a>
 <a class="nav-link" href="docs.html"><span>📄</span><b>Document Reader</b></a>
-<a class="nav-link " href="channels.html"><span>◎</span><b>Channels</b></a>
+<a class="nav-link" href="channels.html"><span>◎</span><b>Channels</b></a>
 <a class="nav-link" href="complaints.html"><span>⚑</span><b>Complaints</b></a>
 <a class="nav-link" href="reviews.html"><span>★</span><b>Reviews</b></a>
-<a class="nav-link " href="notifications.html"><span>♧</span><b>Alerts</b></a>
-<a class="nav-link " href="backup.html"><span>▣</span><b>Backup</b></a>
-<a class="nav-link " href="settings.html"><span>⚙</span><b>Settings</b></a></nav><div class="sidebar-bottom"><a class="nav-link" href="index.html"><span>↗</span><b>Welcome screen</b></a><p class="small muted">Keep creating. Keep your stories safe.</p></div></aside>
-<div class="main-column"><header class="topbar"><button id="menuToggle" class="icon-button mobile-menu" aria-label="Open menu">☰</button><div><p class="eyebrow">CHANNEL STUDIO</p><p class="topbar-title">Planner</p></div><div class="topbar-actions"><button id="quickTheme" class="icon-button" aria-label="Toggle theme" title="Toggle theme">◐</button><a class="avatar-link" href="settings.html" aria-label="Settings">CS</a></div></header>
+<a class="nav-link" href="notifications.html"><span>♧</span><b>Alerts</b></a>
+<a class="nav-link" href="backup.html"><span>▣</span><b>Backup</b></a>
+<a class="nav-link" href="settings.html"><span>⚙</span><b>Settings</b></a>
+</nav>
+<div class="sidebar-bottom">
+<a class="nav-link" href="index.html"><span>↗</span><b>Welcome screen</b></a>
+<p class="small muted">Keep creating. Keep your stories safe.</p>
+</div>
+</aside>
+
+<div class="main-column">
+<header class="topbar">
+<button id="menuToggle" class="icon-button mobile-menu" aria-label="Open menu">☰</button>
+<div>
+<p class="eyebrow">CHANNEL STUDIO</p>
+<p class="topbar-title">Story Planner</p>
+</div>
+<div class="topbar-actions">
+<button id="quickTheme" class="icon-button" aria-label="Toggle theme" title="Toggle theme">◐</button>
+<a class="avatar-link" href="settings.html" aria-label="Settings">CS</a>
+</div>
+</header>
+
 <main class="page-content page-enter">
-<section class="page-intro"><p class="eyebrow">PLAN AHEAD</p><h1>Posting <span>planner</span></h1><p class="muted">Plan up to 4 posts per day. When the planner is open, a due-time alarm and notification remind you. Tap to copy the post and open the selected channel, publish it in WhatsApp, then confirm completion.</p></section>
-<section class="panel"><form id="taskForm" class="form-grid">
-<label class="full">Planned post<textarea id="taskTitle" required maxlength="5000" rows="6" placeholder="Write or paste the exact post you want to publish…"></textarea></label>
-<label class="full">Post to channel<select id="taskChannel" required><option value="">Choose a saved channel…</option></select><span class="small muted">Add the channel URL first in Channels. At posting time, Channel Studio will copy your text and open the channel link.</span></label>
-<label class="full">Posting time<input id="taskDate" type="datetime-local" required></label>
-<input id="taskType" type="hidden" value="post"><input id="taskPriority" type="hidden" value="normal"><input id="taskReminder" type="hidden" value="0"><textarea id="taskNotes" hidden></textarea>
-<div class="full row-wrap"><button class="button primary" type="submit">Schedule post</button><button class="button ghost" type="button" id="enableNotifications">Enable notifications</button></div>
-<p class="small muted full" id="notificationStatus">Enable notifications to receive posting-time alerts. For reliable alerts, keep Channel Studio open; browsers may suspend alarms when the app is closed.</p>
-<p class="small muted full">Maximum 4 planned posts per day. WhatsApp must remain in control of publishing: Channel Studio cannot force-open another app, auto-paste, or verify publication in the background.</p>
-</form></section>
-<section class="section-block"><div class="section-heading"><h2>Scheduled posts</h2><select id="taskFilter" class="compact-select"><option value="all">All posts</option><option value="pending">Upcoming</option><option value="done">Completed</option></select></div><div id="taskList" class="stack-list"></div></section>
-</main><footer class="app-footer">Made for your stories <span>✦</span> <span class="muted">Local-first • Your content stays yours</span></footer></div></div>
+<section class="page-intro planner-intro">
+<p class="eyebrow">YOUR POSTING ROUTINE</p>
+<h1>Story <span>planner</span></h1>
+<p class="muted">Manage three independent queues. Choose each story, channel, starting episode and posting time. You publish manually through WhatsApp.</p>
+</section>
+
+<section class="panel">
+<div class="section-heading">
+<div>
+<p class="eyebrow">SHARED ADVERTISEMENT</p>
+<h2>📢 Advertisement before every episode</h2>
+</div>
+</div>
+<div class="planner-advert-grid">
+<label class="full">Advertisement text
+<textarea id="plannerAdvertText" rows="5" maxlength="5000" placeholder="Write the advertisement that should be posted before each episode..."></textarea>
+</label>
+<div>
+<label for="taskMediaSelect">Advertisement poster from Media Library</label>
+<select id="taskMediaSelect">
+<option value="">Loading your Media Library...</option>
+</select>
+<div id="taskMediaPreview" hidden></div>
+<p class="small muted">Choose an existing image or video. You will attach and publish it manually in WhatsApp.</p>
+</div>
+<div class="planner-slot-status">
+<strong>Posting sequence</strong>
+<p class="small muted">Advertisement first → return to Story Studio → episode next → confirm after publishing.</p>
+<p class="small muted">The same advertisement text and selected poster are used for all three queues.</p>
+</div>
+</div>
+<div class="planner-actions">
+<button type="button" class="button primary" id="savePlannerSettings">Save advertisement settings</button>
+<span class="small muted" id="plannerSaveStatus" aria-live="polite"></span>
+</div>
+</section>
+
+<section class="section-block">
+<div class="section-heading">
+<div>
+<p class="eyebrow">THREE INDEPENDENT QUEUES</p>
+<h2>Daily posting slots</h2>
+</div>
+</div>
+
+<div class="planner-slots">
+<section class="panel planner-slot" data-slot="morning">
+<div class="planner-slot-head">
+<div><p class="eyebrow">MORNING QUEUE</p><h2>🌅 Morning</h2></div>
+<span class="pill">07:00 default</span>
+</div>
+<div class="planner-fields">
+<label>Posting time
+<input type="time" id="morningTime" value="07:00">
+</label>
+<label>Queue type
+<select id="morningType">
+<option value="serial">Serial story</option>
+<option value="ready">Ready-Made story</option>
+</select>
+</label>
+<label class="full">Choose story
+<select id="morningStory"><option value="">Loading stories...</option></select>
+</label>
+<label>Starting season
+<input type="number" id="morningSeason" min="1" step="1" value="1">
+</label>
+<label>Starting episode
+<input type="number" id="morningEpisode" min="1" step="1" value="1">
+</label>
+<label class="full">WhatsApp Channel
+<select id="morningChannel"><option value="">Choose a saved channel...</option></select>
+</label>
+</div>
+<div class="planner-slot-status" id="morningSummary">Choose a story and channel for this queue.</div>
+</section>
+
+<section class="panel planner-slot" data-slot="lunch">
+<div class="planner-slot-head">
+<div><p class="eyebrow">LUNCHTIME QUEUE</p><h2>☀️ Lunch</h2></div>
+<span class="pill">13:00 default</span>
+</div>
+<div class="planner-fields">
+<label>Posting time
+<input type="time" id="lunchTime" value="13:00">
+</label>
+<label>Queue type
+<select id="lunchType">
+<option value="ready">Ready-Made story</option>
+<option value="serial">Serial story</option>
+</select>
+</label>
+<label class="full">Choose story
+<select id="lunchStory"><option value="">Loading stories...</option></select>
+</label>
+<label>Starting season
+<input type="number" id="lunchSeason" min="1" step="1" value="1">
+</label>
+<label>Starting episode
+<input type="number" id="lunchEpisode" min="1" step="1" value="1">
+</label>
+<label class="full">WhatsApp Channel
+<select id="lunchChannel"><option value="">Choose a saved channel...</option></select>
+</label>
+</div>
+<div class="planner-slot-status" id="lunchSummary">Choose a story and channel for this queue.</div>
+</section>
+
+<section class="panel planner-slot" data-slot="evening">
+<div class="planner-slot-head">
+<div><p class="eyebrow">EVENING QUEUE</p><h2>🌙 Evening</h2></div>
+<span class="pill">21:00 default</span>
+</div>
+<div class="planner-fields">
+<label>Posting time
+<input type="time" id="eveningTime" value="21:00">
+</label>
+<label>Queue type
+<select id="eveningType">
+<option value="serial">Serial story</option>
+<option value="ready">Ready-Made story</option>
+</select>
+</label>
+<label class="full">Choose story
+<select id="eveningStory"><option value="">Loading stories...</option></select>
+</label>
+<label>Starting season
+<input type="number" id="eveningSeason" min="1" step="1" value="1">
+</label>
+<label>Starting episode
+<input type="number" id="eveningEpisode" min="1" step="1" value="1">
+</label>
+<label class="full">WhatsApp Channel
+<select id="eveningChannel"><option value="">Choose a saved channel...</option></select>
+</label>
+</div>
+<div class="planner-slot-status" id="eveningSummary">Choose a story and channel for this queue.</div>
+</section>
+</div>
+
+<div class="planner-actions">
+<button type="button" class="button primary" id="saveAllPlannerSlots">Save all three queues</button>
+<span class="small muted" id="slotsSaveStatus" aria-live="polite"></span>
+</div>
+</section>
+
+<section class="section-block panel">
+<p class="eyebrow">CURRENT BATCH</p>
+<h2>Queue setup status</h2>
+<div id="plannerSetupStatus" class="stack-list">
+<p class="small muted">Loading your saved stories, episodes and channels...</p>
+</div>
+<p class="small muted planner-note">This first batch saves the queue setup. The advertisement-to-episode posting buttons, automatic queue advancement, progress tracking and posting history will be connected in the next batches.</p>
+</section>
+</main>
+
+<footer class="app-footer">Made for your stories <span>✦</span> <span class="muted">Local-first • Your content stays yours</span></footer>
+</div>
+</div>
+
 <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
-<script src="js/storage.js"></script><script src="js/themes.js"></script><script src="js/transitions.js"></script><script src="js/effects.js"></script><script src="js/notifications.js"></script><script src="js/app.js"></script><script src="js/planner-media.js"></script><script src="js/planner-stage3.js"></script><script src="js/planner-stage4.js"></script>
-<script src="js/planner-publish.js"></script>\n<script src="js/planner-story-slots.js"></script><script src="js/story-runway-alerts.js"></script><script src="js/whatsapp-shell.js"></script></script></body></html>
+
+<script src="js/storage.js"></script>
+<script src="js/themes.js"></script>
+<script src="js/transitions.js"></script>
+<script src="js/effects.js"></script>
+<script src="js/notifications.js"></script>
+<script src="js/app.js"></script>
+<script src="js/planner-media.js"></script>
+<script src="js/planner-story-slots.js"></script>
+<script src="js/whatsapp-shell.js"></script>
+</body>
+</html>
