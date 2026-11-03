@@ -373,3 +373,49 @@ body[data-theme="dark"] .preview-actions .btn-primary {
     flex: 1 1 140px;
   }
 }
+/* STORY LIBRARY — FORCE BUTTON DESIGN */
+.item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.item-actions .button {
+  min-height: 44px;
+  padding: 11px 17px;
+  border-radius: 13px;
+  font-size: 13px;
+  font-weight: 800;
+  border: 1px solid transparent;
+  transition: all .2s ease;
+}
+
+.item-actions .button.primary {
+  background: linear-gradient(135deg, #0bc49a, #087dce) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px #087dce30;
+}
+
+.item-actions .button.ghost {
+  background: linear-gradient(135deg, #ffffff, #eaf4ff) !important;
+  color: #176b72 !important;
+  border: 1px solid #c8e8e2 !important;
+}
+
+.item-actions .button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px #087dce25;
+}
+
+body[data-theme="dark"] .item-actions .button.ghost {
+  background: linear-gradient(135deg, #26364c, #1b2a40) !important;
+  color: #e6fff8 !important;
+  border-color: #3d6470 !important;
+}
+
+@media (max-width: 520px) {
+  .item-actions .button {
+    flex: 1 1 140px;
+  }
+}
