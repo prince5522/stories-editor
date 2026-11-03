@@ -1,10 +1,9 @@
-
 /* =========================================
-   CHANNEL STUDIO v16
+   CHANNEL STUDIO v17
    Instant offline startup + background updates
 ========================================= */
 
-const CACHE = 'channel-studio-shell-v16';
+const CACHE = 'channel-studio-shell-v17';
 
 const CORE = [
   './',
@@ -49,6 +48,9 @@ const CORE = [
   'js/planner-stage3.js',
   'js/planner-stage4.js',
   'js/planner-publish.js',
+  'js/planner-story-slots.js',
+  'js/story-runway-alerts.js',
+  'js/story-reminder-monitor.js',
   'js/ready-made.js',
   'js/supabase-cloud.js',
 
@@ -117,7 +119,7 @@ self.addEventListener('activate', event => {
 
     await self.clients.claim();
 
-    console.log('[Channel Studio] v16 activated');
+    console.log('[Channel Studio] v17 activated');
   })());
 });
 
