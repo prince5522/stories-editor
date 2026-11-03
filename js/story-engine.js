@@ -19,7 +19,7 @@ function normalTitle(value){
 return String(value||'').trim().toLowerCase().replace(/\s+/g,' ');
 }
 
-/* Strong folder identity: ignores emojis, punctuation and invisible characters. */
+/* Shared folder identity for uploaded stories and generated episodes. */
 function folderTitleKey(value){
 return String(value||'')
 .normalize('NFKC')
@@ -100,31 +100,50 @@ const el=$('storyList');
 if(!el)return;
 
 const q=($('storySearch')?.value||'').trim().toLowerCase();
+
 const stories=get('stories').map((s,i)=>({...s,_index:i}))
 .filter(s=>!q||[s.title,s.genre,s.description,s.content]
 .some(v=>String(v||'').toLowerCase().includes(q)));
 
 $('storyLibraryCount').textContent=
-`${stories.length} season${stories.length===1?'':'s'}`;
+`${stories.length} manuscript${stories.length===1?'':'s'}`;
 
 if(!stories.length){
-el.innerHTML='<div class="empty-state">No matching seasons yet. Import a PDF or paste your story above.</div>';
+el.innerHTML='<div class="empty-state">No matching stories yet. Import a PDF or paste your story above.</div>';
 renderStorySelect();
 return;
 }
 
+/*
+  Group uploaded manuscripts by normalized story title.
+  Unique manuscript IDs remain unchanged.
+  Different title capitalization, emojis and punctuation
+  will not create duplicate main folders.
+*/
 const groups=new Map();
 
 stories.forEach(s=>{
 const title=String(s.title||'Untitled story').trim()||'Untitled story';
-if(!groups.has(title))groups.set(title,[]);
-groups.get(title).push(s);
+const storyKey=folderTitleKey(title);
+
+if(!groups.has(storyKey)){
+groups.set(storyKey,{
+name:title,
+seasons:[]
+});
+}
+
+groups.get(storyKey).seasons.push(s);
 });
 
-el.innerHTML=[...groups.entries()].map(([title,seasons])=>{
-const cards=seasons.slice()
-.sort((a,b)=>(Number(a.seasonNumber)||1)-(Number(b.seasonNumber)||1))
-.map(s=>{
+el.innerHTML=[...groups.entries()].map(([storyKey,group])=>{
+const seasons=group.seasons.slice()
+.sort((a,b)=>
+(Number(a.seasonNumber)||1)-(Number(b.seasonNumber)||1)||
+Number(a._index)-Number(b._index)
+);
+
+const cards=seasons.map(s=>{
 const content=s.content||'';
 const wordCount=content.trim()?(content.trim().match(/\S+/g)||[]).length:0;
 const pct=s.readingProgress||0;
@@ -150,12 +169,19 @@ ${s.description?`<p>${esc(s.description)}</p>`:''}
 </article>`;
 }).join('');
 
-return `<section class="story-folder">
-<h3 class="story-folder-title">📁 ${esc(title)}
-<span class="small muted">· ${seasons.length} season${seasons.length===1?'':'s'}</span>
-</h3>
-<div class="story-season-list">${cards}</div>
-</section>`;
+const seasonCount=new Set(seasons.map(s=>
+Math.max(1,Number(s.seasonNumber)||1)
+)).size;
+
+return `<details class="rm-story-folder story-folder" open>
+<summary class="story-folder-title">
+<span>📁 ${esc(group.name)}</span>
+<span class="small muted">· ${seasonCount} season${seasonCount===1?'':'s'} · ${seasons.length} manuscript${seasons.length===1?'':'s'}</span>
+</summary>
+<div class="story-season-list">
+${cards}
+</div>
+</details>`;
 }).join('');
 
 renderStorySelect();
