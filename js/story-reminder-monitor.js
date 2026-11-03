@@ -1,0 +1,311 @@
+
+/* =========================================
+   STORY STUDIO — SHARED REMINDER MONITOR
+   App-wide local posting reminders.
+   Works while any Story Studio page is open,
+   including when the device is offline.
+========================================= */
+
+(function () {
+  'use strict';
+
+  const KEY = 'storySlotPlannerV1';
+
+  let timer = null;
+  let checking = false;
+
+  const store = () => window.StudioStore;
+
+  function read() {
+    if (!store()) return null;
+
+    const saved = store().get(KEY, {}) || {};
+
+    return {
+      ...saved,
+      slots: {
+        morning: {
+          time: '07:00',
+          type: 'serial',
+          storyId: '',
+          channelUrl: '',
+          ...(saved.slots?.morning || {})
+        },
+        lunch: {
+          time: '13:00',
+          type: 'ready',
+          storyId: '',
+          channelUrl: '',
+          ...(saved.slots?.lunch || {})
+        },
+        evening: {
+          time: '21:00',
+          type: 'serial',
+          storyId: '',
+          channelUrl: '',
+          ...(saved.slots?.evening || {})
+        }
+      },
+      completed: saved.completed || {},
+      lastRun: saved.lastRun || {},
+      pending: saved.pending || null
+    };
+  }
+
+  function save(data) {
+    try {
+      return store().set(KEY, data) !== false;
+    } catch (error) {
+      console.error('[Story Reminders] Save failed:', error);
+      return false;
+    }
+  }
+
+  function serialEpisodes() {
+    return store().get('episodes', []) || [];
+  }
+
+  function readyEpisodes() {
+    return store().get('readyMadeEpisodes', []) || [];
+  }
+
+  function serialStories() {
+    return store().get('stories', []) || [];
+  }
+
+  function episodeId(ep) {
+    return String(ep.id || '');
+  }
+
+  function sortEpisodes(a, b) {
+    return (
+      Number(a.seasonNumber ?? a.season_number ?? 0) -
+      Number(b.seasonNumber ?? b.season_number ?? 0)
+    ) || (
+      Number(a.episodeNumber ?? a.episode_number ?? 0) -
+      Number(b.episodeNumber ?? b.episode_number ?? 0)
+    );
+  }
+
+  function nextEpisode(slot, data) {
+    if (!slot.storyId) return null;
+
+    if (slot.type === 'ready') {
+      return readyEpisodes()
+        .filter(ep =>
+          String(ep.story_title || ep.storyName || '').trim() ===
+            String(slot.storyId).trim() &&
+          ep.id &&
+          ep.status !== 'posted' &&
+          !data.completed[episodeId(ep)]
+        )
+        .sort(sortEpisodes)[0] || null;
+    }
+
+    return serialEpisodes()
+      .filter(ep =>
+        String(ep.storyId || '') === String(slot.storyId) &&
+        ep.id &&
+        !data.completed[episodeId(ep)]
+      )
+      .sort(sortEpisodes)[0] || null;
+  }
+
+  function dateKey(date) {
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')
+    ].join('-');
+  }
+
+  function findDue(data) {
+    const now = new Date();
+    const today = dateKey(now);
+
+    const definitions = [
+      { id: 'morning' },
+      { id: 'lunch' },
+      { id: 'evening' }
+    ];
+
+    for (const definition of definitions) {
+      const slot = data.slots[definition.id];
+
+      if (!slot?.storyId || !slot?.channelUrl || !slot?.time) {
+        continue;
+      }
+
+      const parts = String(slot.time).split(':').map(Number);
+      const hour = parts[0];
+      const minute = parts[1];
+
+      if (
+        !Number.isInteger(hour) ||
+        !Number.isInteger(minute) ||
+        hour < 0 || hour > 23 ||
+        minute < 0 || minute > 59
+      ) {
+        continue;
+      }
+
+      const due = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        hour,
+        minute
+      );
+
+      const key = `${today}_${definition.id}`;
+
+      if (now < due || data.lastRun[key]) continue;
+
+      const episode = nextEpisode(slot, data);
+      if (!episode) continue;
+
+      return {
+        id: definition.id,
+        slot,
+        episode,
+        dateKey: today,
+        key
+      };
+    }
+
+    return null;
+  }
+
+  function storyName(due) {
+    if (due.slot.type === 'ready') {
+      return (
+        due.episode.story_title ||
+        due.episode.storyName ||
+        due.slot.storyId
+      );
+    }
+
+    const story = serialStories().find(item =>
+      String(item.id) === String(due.slot.storyId)
+    );
+
+    return (
+      due.episode.storyTitle ||
+      due.episode.seasonTitle ||
+      story?.title ||
+      story?.storyTitle ||
+      'Your story'
+    );
+  }
+
+  function notify(due) {
+    const ep = due.episode;
+
+    const episodeName = due.slot.type === 'ready'
+      ? (
+          ep.episode_name ||
+          `Episode ${ep.episode_number || ''}`
+        )
+      : (
+          ep.title ||
+          `Episode ${ep.episodeNumber || ''}`
+        );
+
+    const story = storyName(due);
+
+    const message =
+      `It's time to post ${episodeName} from ${story}. ` +
+      'Open Story Studio to publish your advertisement and episode.';
+
+    if (
+      window.StudioNotify &&
+      typeof window.StudioNotify.send === 'function'
+    ) {
+      window.StudioNotify.send(
+        '⏰ Story posting time!',
+        message,
+        {
+          tag: `story-post-${due.dateKey}-${due.id}`,
+          url: 'planner.html'
+        }
+      );
+    } else {
+      console.warn(
+        '[Story Reminders] Notification helper is unavailable.'
+      );
+    }
+
+    if (typeof window.studioToast === 'function') {
+      window.studioToast('🔔 Posting time! ' + message);
+    }
+  }
+
+  function check() {
+    if (checking || !store()) return;
+
+    checking = true;
+
+    try {
+      const data = read();
+
+      if (!data || data.pending) return;
+
+      const due = findDue(data);
+      if (!due) return;
+
+      const ep = due.episode;
+
+      // Save the pending episode before sending a notification.
+      // This prevents duplicate reminders from different pages.
+      data.pending = {
+        slotId: due.id,
+        dateKey: due.dateKey,
+        episodeId: episodeId(ep),
+        episodeType: due.slot.type,
+        channelUrl: due.slot.channelUrl,
+        stage: 'advert',
+        leftApp: false,
+        startedAt: new Date().toISOString()
+      };
+
+      if (!save(data)) return;
+
+      notify(due);
+
+      console.log(
+        '[Story Reminders] Posting reminder created:',
+        due.id,
+        episodeId(ep)
+      );
+
+    } catch (error) {
+      console.error('[Story Reminders] Check failed:', error);
+    } finally {
+      checking = false;
+    }
+  }
+
+  function start() {
+    if (!store() || timer) return;
+
+    check();
+
+    timer = setInterval(check, 15000);
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) check();
+    });
+
+    window.addEventListener('focus', check);
+    window.addEventListener('online', check);
+
+    console.log('[Story Reminders] Shared monitor started.');
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+
+})();
