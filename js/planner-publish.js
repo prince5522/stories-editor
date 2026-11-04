@@ -38,16 +38,29 @@ function esc(value) {
 
 function todayKey() {
   const d = new Date();
-
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function localDateKey(value) {
-  const date = new Date(value);
+function isCompletedToday(item) {
+  if (!item || !item.completedAt) return false;
 
-  if (Number.isNaN(date.getTime())) return '';
+  const date = new Date(item.completedAt);
+  if (Number.isNaN(date.getTime())) return false;
 
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+  return key === todayKey();
+}
+
+/* Check both the daily marker and the actual history records. */
+function alreadyCompletedToday(slotName) {
+  if (settings.slotRuns?.[slotName] === todayKey()) {
+    return true;
+  }
+
+  const records = settings.completed?.[slotName] || [];
+
+  return records.some(isCompletedToday);
 }
 
 function isSlotDue(slot) {
@@ -57,9 +70,7 @@ function isSlotDue(slot) {
   const hour = Number(parts[0]);
   const minute = Number(parts[1]);
 
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
-    return false;
-  }
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return false;
 
   const scheduled = new Date();
   scheduled.setHours(hour, minute, 0, 0);
@@ -67,66 +78,18 @@ function isSlotDue(slot) {
   return new Date() >= scheduled;
 }
 
-/* =========================================
-   COMPLETION CHECKS
-========================================= */
-
-function alreadyCompletedToday(slotName) {
-  return settings.slotRuns?.[slotName] === todayKey();
-}
-
-function episodeAlreadyCompleted(slotName, episodeId) {
-  const records = settings.completed?.[slotName] || [];
-
-  return records.some(item =>
-    String(item.episodeId) === String(episodeId) &&
-    localDateKey(item.completedAt) === todayKey()
-  );
-}
-
-/*
-  IMPORTANT:
-  Check both the daily slot marker and posting history.
-  This prevents the advertisement button from returning
-  when one completion record was not updated.
-*/
-
-function slotHasCompletedToday(slotName) {
-  if (alreadyCompletedToday(slotName)) {
-    return true;
-  }
-
-  const records = settings.completed?.[slotName] || [];
-
-  return records.some(item =>
-    item.completedAt &&
-    localDateKey(item.completedAt) === todayKey()
-  );
-}
-
-/* =========================================
-   EPISODE MANAGEMENT
-========================================= */
-
 function storyEpisodes(slot) {
   if (slot.type === 'ready') {
     return (get('readyMadeEpisodes', []) || [])
       .filter(ep => {
-        const name =
-          ep.story_title ||
-          ep.storyName ||
-          ep.title ||
-          'Ready-made episodes';
+        const name = ep.story_title || ep.storyName || ep.title || 'Ready-made episodes';
 
-        return name.toLowerCase() ===
-          String(slot.storyName || '').toLowerCase() &&
+        return name.toLowerCase() === String(slot.storyName || '').toLowerCase() &&
           String(ep.status || '').toLowerCase() !== 'posted';
       })
       .sort((a, b) =>
-        Number(a.season_number || 1) -
-          Number(b.season_number || 1) ||
-        Number(a.episode_number || 1) -
-          Number(b.episode_number || 1)
+        Number(a.season_number || 1) - Number(b.season_number || 1) ||
+        Number(a.episode_number || 1) - Number(b.episode_number || 1)
       );
   }
 
@@ -135,14 +98,11 @@ function storyEpisodes(slot) {
       const name = ep.storyTitle || ep.seasonTitle || '';
 
       return !ep.archived &&
-        name.toLowerCase() ===
-          String(slot.storyName || '').toLowerCase();
+        name.toLowerCase() === String(slot.storyName || '').toLowerCase();
     })
     .sort((a, b) =>
-      Number(a.seasonNumber || 1) -
-        Number(b.seasonNumber || 1) ||
-      Number(a.episodeNumber || 1) -
-        Number(b.episodeNumber || 1)
+      Number(a.seasonNumber || 1) - Number(b.seasonNumber || 1) ||
+      Number(a.episodeNumber || 1) - Number(b.episodeNumber || 1)
     );
 }
 
@@ -157,21 +117,16 @@ function findNextEpisode(slot) {
   const position = getPosition(slot);
 
   return storyEpisodes(slot).find(ep => {
-    const season = Number(
-      slot.type === 'ready'
-        ? ep.season_number || 1
-        : ep.seasonNumber || 1
-    );
+    const season = Number(slot.type === 'ready'
+      ? ep.season_number || 1
+      : ep.seasonNumber || 1);
 
-    const episode = Number(
-      slot.type === 'ready'
-        ? ep.episode_number || 1
-        : ep.episodeNumber || 1
-    );
+    const episode = Number(slot.type === 'ready'
+      ? ep.episode_number || 1
+      : ep.episodeNumber || 1);
 
     return season > position.season ||
-      (season === position.season &&
-       episode >= position.episode);
+      (season === position.season && episode >= position.episode);
   }) || null;
 }
 
@@ -189,10 +144,7 @@ function episodeLabel(ep, type) {
 
 function episodeText(ep, type) {
   if (type === 'ready') {
-    const storyName =
-      ep.story_title ||
-      ep.storyName ||
-      'Untitled story';
+    const storyName = ep.story_title || ep.storyName || 'Untitled story';
 
     return [
       storyName,
@@ -220,10 +172,6 @@ function episodeText(ep, type) {
   ].join('\n\n');
 }
 
-/* =========================================
-   WHATSAPP HELPERS
-========================================= */
-
 function openChannel(url) {
   if (!url) {
     window.studioToast?.('Choose a WhatsApp Channel first.');
@@ -233,9 +181,7 @@ function openChannel(url) {
   const opened = window.open(url, '_blank');
 
   if (!opened) {
-    window.studioToast?.(
-      'If WhatsApp did not open, use your channel link manually.'
-    );
+    window.studioToast?.('If WhatsApp did not open, use your channel link manually.');
   }
 
   return true;
@@ -247,7 +193,6 @@ async function copyText(text) {
     return true;
   } catch (error) {
     const area = document.createElement('textarea');
-
     area.value = text;
     area.style.position = 'fixed';
     area.style.opacity = '0';
@@ -262,24 +207,16 @@ async function copyText(text) {
     } catch (_) {}
 
     area.remove();
-
     return copied;
   }
 }
 
-/* =========================================
-   POSTING SEQUENCE
-========================================= */
-
 function getPendingEpisode(slotName) {
   const pending = settings.pending;
 
-  if (!pending || pending.slot !== slotName) {
-    return null;
-  }
+  if (!pending || pending.slot !== slotName) return null;
 
   const slot = settings.slots[slotName];
-
   if (!slot) return null;
 
   return storyEpisodes(slot).find(ep =>
@@ -292,10 +229,7 @@ function setPending(slotName, stage, ep) {
     slot: slotName,
     stage,
     episodeId: ep.id,
-    episodeLabel: episodeLabel(
-      ep,
-      settings.slots[slotName].type
-    ),
+    episodeLabel: episodeLabel(ep, settings.slots[slotName].type),
     startedAt: new Date().toISOString(),
     leftAppAt: null,
     returnPrompted: false
@@ -305,31 +239,24 @@ function setPending(slotName, stage, ep) {
 }
 
 async function startAdvertisement(slotName) {
-  const slot = settings.slots[slotName];
+  settings = readSettings();
 
+  const slot = settings.slots?.[slotName];
   if (!slot) return;
 
-  if (slotHasCompletedToday(slotName)) {
-    window.studioToast?.(
-      'This slot has already been posted today. ✅'
-    );
+  if (!isSlotDue(slot)) {
+    window.studioToast?.(`This slot becomes available at ${slot.time}.`);
+    return;
+  }
 
+  if (alreadyCompletedToday(slotName)) {
+    window.studioToast?.('This queue has already been completed today.');
     renderPostingControls();
     return;
   }
 
-  if (!isSlotDue(slot)) {
-    window.studioToast?.(
-      `This slot becomes available at ${slot.time}.`
-    );
-    return;
-  }
-
   if (settings.pending) {
-    window.studioToast?.(
-      'Finish or cancel the current posting sequence first.'
-    );
-
+    window.studioToast?.('Finish or cancel the current posting sequence first.');
     renderPostingControls();
     return;
   }
@@ -337,11 +264,7 @@ async function startAdvertisement(slotName) {
   const ep = findNextEpisode(slot);
 
   if (!ep) {
-    window.studioToast?.(
-      'No unpublished episode remains in this queue.'
-    );
-
-    renderPostingControls();
+    window.studioToast?.('No unpublished episode remains in this queue.');
     return;
   }
 
@@ -353,9 +276,7 @@ async function startAdvertisement(slotName) {
   }
 
   if (!slot.channelUrl) {
-    window.studioToast?.(
-      'Select a WhatsApp Channel for this queue.'
-    );
+    window.studioToast?.('Select a WhatsApp Channel for this queue.');
     return;
   }
 
@@ -371,20 +292,18 @@ async function startAdvertisement(slotName) {
 
   renderPostingControls();
 
-  window.studioToast?.(
-    'Advertisement copied. Publish it in WhatsApp, then return here.'
-  );
+  window.studioToast?.('Advertisement copied. Publish it in WhatsApp, then return here.');
 }
 
 async function prepareEpisode(slotName) {
+  settings = readSettings();
+
   const pending = settings.pending;
 
   if (!pending ||
       pending.slot !== slotName ||
       pending.stage !== 'advert-confirmed') {
-    window.studioToast?.(
-      'The advertisement stage is not complete.'
-    );
+    window.studioToast?.('The advertisement stage is not complete.');
     return;
   }
 
@@ -392,9 +311,7 @@ async function prepareEpisode(slotName) {
   const ep = getPendingEpisode(slotName);
 
   if (!ep) {
-    window.studioToast?.(
-      'The selected episode could not be found.'
-    );
+    window.studioToast?.('The selected episode could not be found.');
     return;
   }
 
@@ -417,23 +334,17 @@ async function prepareEpisode(slotName) {
 
   renderPostingControls();
 
-  window.studioToast?.(
-    'Episode copied. Publish it in WhatsApp, then return here.'
-  );
+  window.studioToast?.('Episode copied. Publish it in WhatsApp, then return here.');
 }
 
 function advancePosition(slot, ep) {
-  const season = Number(
-    slot.type === 'ready'
-      ? ep.season_number || 1
-      : ep.seasonNumber || 1
-  );
+  const season = Number(slot.type === 'ready'
+    ? ep.season_number || 1
+    : ep.seasonNumber || 1);
 
-  const episode = Number(
-    slot.type === 'ready'
-      ? ep.episode_number || 1
-      : ep.episodeNumber || 1
-  );
+  const episode = Number(slot.type === 'ready'
+    ? ep.episode_number || 1
+    : ep.episodeNumber || 1);
 
   if (episode >= 13) {
     slot.season = season + 1;
@@ -459,10 +370,6 @@ function markReadyMadePosted(ep) {
   save('readyMadeEpisodes', all);
 }
 
-/* =========================================
-   AUTOMATIC RETURN ADVANCEMENT
-========================================= */
-
 function completeEpisodeOnReturn(slotName) {
   const pending = settings.pending;
 
@@ -476,14 +383,11 @@ function completeEpisodeOnReturn(slotName) {
   const ep = getPendingEpisode(slotName);
 
   if (!ep) {
-    window.studioToast?.(
-      'Episode not found. The queue was not advanced.'
-    );
+    window.studioToast?.('Episode not found. The queue was not advanced.');
     return false;
   }
 
   const completed = settings.completed || {};
-
   completed[slotName] = completed[slotName] || [];
 
   if (!completed[slotName].some(item =>
@@ -499,7 +403,6 @@ function completeEpisodeOnReturn(slotName) {
   }
 
   settings.completed = completed;
-
   settings.slotRuns = settings.slotRuns || {};
   settings.slotRuns[slotName] = todayKey();
 
@@ -517,16 +420,13 @@ function completeEpisodeOnReturn(slotName) {
     'You returned from WhatsApp. Queue advanced automatically. ✅'
   );
 
-  document.dispatchEvent(
-    new Event('planner:posts-updated')
-  );
+  document.dispatchEvent(new Event('planner:posts-updated'));
 
   return true;
 }
 
 function advanceAfterReturn() {
   const pending = settings.pending;
-
   if (!pending) return;
 
   if (pending.stage === 'advert-opened') {
@@ -550,13 +450,10 @@ function advanceAfterReturn() {
   }
 }
 
-/* =========================================
-   RECOVERY PANEL
-========================================= */
+/* ---------- RECOVERY ---------- */
 
 function ensureRecoveryPanel() {
   let panel = $('plannerPendingRecovery');
-
   if (panel) return panel;
 
   panel = document.createElement('section');
@@ -565,21 +462,15 @@ function ensureRecoveryPanel() {
   panel.style.margin = '12px 0';
   panel.style.padding = '14px';
   panel.style.borderRadius = '14px';
-  panel.style.border =
-    '1px solid var(--border, rgba(128,128,128,.35))';
+  panel.style.border = '1px solid var(--border, rgba(128,128,128,.35))';
   panel.style.display = 'none';
 
   const firstSlot = document.querySelector('[data-slot]');
 
-  if (firstSlot && firstSlot.parentElement) {
+  if (firstSlot?.parentElement) {
     firstSlot.parentElement.insertBefore(panel, firstSlot);
   } else {
-    const target =
-      document.querySelector('main') ||
-      document.querySelector('.app-content') ||
-      document.body;
-
-    target.prepend(panel);
+    (document.querySelector('main') || document.body).prepend(panel);
   }
 
   return panel;
@@ -600,12 +491,9 @@ function renderRecoveryPanel() {
     : 'unknown';
 
   const stageNames = {
-    'advert-opened':
-      'Advertisement stage — return to continue',
-    'advert-confirmed':
-      'Advertisement returned — episode ready',
-    'episode-opened':
-      'Episode stage — return to advance'
+    'advert-opened': 'Advertisement stage — return to continue',
+    'advert-confirmed': 'Advertisement returned — episode ready',
+    'episode-opened': 'Episode stage — return to advance'
   };
 
   panel.style.display = 'block';
@@ -618,12 +506,10 @@ function renderRecoveryPanel() {
       Episode: ${esc(pending.episodeLabel || 'Not available')}
     </p>
     <p class="small muted">
-      You can continue this sequence in its queue, or cancel it.
+      Continue this sequence in its queue, or cancel it.
       Cancelling does not delete your story or episode.
     </p>
-    <button type="button"
-      class="button ghost"
-      data-cancel-any-sequence>
+    <button type="button" class="button ghost" data-cancel-any-sequence>
       ✖ Cancel stuck sequence
     </button>
   `;
@@ -631,45 +517,31 @@ function renderRecoveryPanel() {
 
 function cancelAnyPending() {
   if (!settings.pending) {
-    window.studioToast?.(
-      'There is no active posting sequence to cancel.'
-    );
-
+    window.studioToast?.('There is no active posting sequence to cancel.');
     renderPostingControls();
     return;
   }
 
-  const pending = settings.pending;
-  const slotName = pending.slot || 'unknown';
+  const slotName = settings.pending.slot || 'unknown';
 
   if (!confirm(
     `Cancel the posting sequence for the ${slotName} slot?\n\nYour story, episode, and saved planner settings will NOT be deleted.`
-  )) {
-    return;
-  }
+  )) return;
 
   settings.pending = null;
-
   saveSettings();
+
   renderPostingControls();
 
-  window.studioToast?.(
-    'Posting sequence cancelled. Your episode is still saved.'
-  );
+  window.studioToast?.('Posting sequence cancelled. Your episode is still saved.');
 }
 
 function cancelPending(slotName) {
-  if (!settings.pending ||
-      settings.pending.slot !== slotName) {
-    return;
-  }
-
+  if (!settings.pending || settings.pending.slot !== slotName) return;
   cancelAnyPending();
 }
 
-/* =========================================
-   RETURN DETECTION
-========================================= */
+/* ---------- RETURN DETECTION ---------- */
 
 function handleReturnFromWhatsApp() {
   if (returnCheckLock || document.hidden) return;
@@ -683,8 +555,7 @@ function handleReturnFromWhatsApp() {
 
   returnCheckLock = true;
 
-  const elapsed = Date.now() -
-    Number(pending.leftAppAt);
+  const elapsed = Date.now() - Number(pending.leftAppAt);
 
   if (elapsed < 1000) {
     returnCheckLock = false;
@@ -696,20 +567,15 @@ function handleReturnFromWhatsApp() {
 
   saveSettings();
 
-  setTimeout(() => {
+  window.setTimeout(() => {
     settings = readSettings();
-
     advanceAfterReturn();
-
     returnCheckLock = false;
-
     renderPostingControls();
   }, 500);
 }
 
-/* =========================================
-   SLOT CONTROLS
-========================================= */
+/* ---------- SLOT CONTROLS ---------- */
 
 function renderPostingControls() {
   if (!settings?.slots) return;
@@ -717,49 +583,34 @@ function renderPostingControls() {
   renderRecoveryPanel();
 
   SLOT_NAMES.forEach(slotName => {
-    const panel = document.querySelector(
-      `[data-slot="${slotName}"]`
-    );
-
+    const panel = document.querySelector(`[data-slot="${slotName}"]`);
     if (!panel) return;
 
-    let controls = panel.querySelector(
-      '.planner-posting-controls'
-    );
+    let controls = panel.querySelector('.planner-posting-controls');
 
     if (!controls) {
       controls = document.createElement('div');
-      controls.className =
-        'planner-posting-controls planner-slot-status';
-
+      controls.className = 'planner-posting-controls planner-slot-status';
       panel.appendChild(controls);
     }
 
     const slot = settings.slots[slotName];
-
     if (!slot) return;
 
     const pending = settings.pending;
-    const isPending =
-      pending && pending.slot === slotName;
+    const isPending = pending && pending.slot === slotName;
 
-    /*
-      DAILY COMPLETION CHECK COMES FIRST.
-      A completed slot must never show the
-      advertisement button again today.
-    */
-
-    if (!isPending && slotHasCompletedToday(slotName)) {
+    if (alreadyCompletedToday(slotName) && !isPending) {
       controls.innerHTML = `
-        <p><strong>✅ Posted for today</strong></p>
-        <p class="small muted">
-          The ${esc(slotName)} queue is complete.
-          Your next posting will be available tomorrow at
-          ${esc(slot.time || 'its scheduled time')}.
-        </p>
+        <p><strong>✅ ${esc(slotName.charAt(0).toUpperCase() + slotName.slice(1))} queue completed today</strong></p>
+        <p class="small muted">Your next episode will be available tomorrow at ${esc(slot.time || 'your scheduled time')}.</p>
       `;
       return;
     }
+
+    const ep = isPending
+      ? getPendingEpisode(slotName)
+      : findNextEpisode(slot);
 
     if (!slot.storyName || !slot.channelUrl) {
       controls.innerHTML =
@@ -770,15 +621,8 @@ function renderPostingControls() {
     if (isPending && pending.stage === 'advert-opened') {
       controls.innerHTML = `
         <p><strong>📢 Advertisement stage</strong></p>
-        <p class="small muted">
-          Publish the advert in WhatsApp, then return here.
-          The episode will unlock automatically.
-        </p>
-        <button type="button"
-          class="button ghost"
-          data-cancel-sequence="${slotName}">
-          Cancel sequence
-        </button>
+        <p class="small muted">Publish the advert in WhatsApp, then return here. The episode will unlock automatically.</p>
+        <button type="button" class="button ghost" data-cancel-sequence="${slotName}">Cancel sequence</button>
       `;
       return;
     }
@@ -786,19 +630,9 @@ function renderPostingControls() {
     if (isPending && pending.stage === 'advert-confirmed') {
       controls.innerHTML = `
         <p><strong>✅ Advertisement stage complete</strong></p>
-        <p class="small muted">
-          Next: ${esc(pending.episodeLabel || '')}
-        </p>
-        <button type="button"
-          class="button primary"
-          data-prepare-episode="${slotName}">
-          📖 Prepare episode & open WhatsApp
-        </button>
-        <button type="button"
-          class="button ghost"
-          data-cancel-sequence="${slotName}">
-          Cancel sequence
-        </button>
+        <p class="small muted">Next: ${esc(pending.episodeLabel || '')}</p>
+        <button type="button" class="button primary" data-prepare-episode="${slotName}">📖 Prepare episode & open WhatsApp</button>
+        <button type="button" class="button ghost" data-cancel-sequence="${slotName}">Cancel sequence</button>
       `;
       return;
     }
@@ -806,18 +640,9 @@ function renderPostingControls() {
     if (isPending && pending.stage === 'episode-opened') {
       controls.innerHTML = `
         <p><strong>📖 Episode stage</strong></p>
-        <p class="small muted">
-          ${esc(pending.episodeLabel || 'Episode')}
-        </p>
-        <p class="small muted">
-          Return to Story Studio after WhatsApp.
-          The queue will advance automatically.
-        </p>
-        <button type="button"
-          class="button ghost"
-          data-cancel-sequence="${slotName}">
-          Cancel sequence
-        </button>
+        <p class="small muted">${esc(pending.episodeLabel || 'Episode')}</p>
+        <p class="small muted">Return to Story Studio after WhatsApp. The queue will advance automatically.</p>
+        <button type="button" class="button ghost" data-cancel-sequence="${slotName}">Cancel sequence</button>
       `;
       return;
     }
@@ -828,61 +653,32 @@ function renderPostingControls() {
       return;
     }
 
-    const ep = findNextEpisode(slot);
-
     if (!ep) {
       controls.innerHTML =
         '<p>🎉 No more unpublished episodes found for this queue.</p>';
       return;
     }
 
-    if (episodeAlreadyCompleted(slotName, ep.id)) {
-      controls.innerHTML = `
-        <p><strong>✅ This episode is already recorded as posted</strong></p>
-        <p class="small muted">
-          The queue will not offer this episode again.
-        </p>
-      `;
-      return;
-    }
-
     if (!isSlotDue(slot)) {
       controls.innerHTML = `
-        <p>
-          <strong>
-            Next episode: ${esc(episodeLabel(ep, slot.type))}
-          </strong>
-        </p>
-        <p class="small muted">
-          Posting unlocks at ${esc(slot.time || 'the scheduled time')}.
-        </p>
+        <p><strong>Next episode: ${esc(episodeLabel(ep, slot.type))}</strong></p>
+        <p class="small muted">Posting unlocks at ${esc(slot.time || 'the scheduled time')}.</p>
       `;
       return;
     }
 
     controls.innerHTML = `
-      <p>
-        <strong>
-          Next episode: ${esc(episodeLabel(ep, slot.type))}
-        </strong>
-      </p>
-      <button type="button"
-        class="button primary"
-        data-start-advert="${slotName}">
-        📢 Prepare advertisement & open WhatsApp
-      </button>
+      <p><strong>Next episode: ${esc(episodeLabel(ep, slot.type))}</strong></p>
+      <button type="button" class="button primary" data-start-advert="${slotName}">📢 Prepare advertisement & open WhatsApp</button>
     `;
   });
 }
 
-/* =========================================
-   EVENTS
-========================================= */
+/* ---------- EVENTS ---------- */
 
 function bindEvents() {
   document.addEventListener('click', event => {
     const target = event.target.closest('button');
-
     if (!target) return;
 
     if (target.hasAttribute('data-cancel-any-sequence')) {
@@ -891,21 +687,18 @@ function bindEvents() {
     }
 
     const start = target.closest('[data-start-advert]');
-
     if (start) {
       startAdvertisement(start.dataset.startAdvert);
       return;
     }
 
     const prepare = target.closest('[data-prepare-episode]');
-
     if (prepare) {
       prepareEpisode(prepare.dataset.prepareEpisode);
       return;
     }
 
     const cancel = target.closest('[data-cancel-sequence]');
-
     if (cancel) {
       cancelPending(cancel.dataset.cancelSequence);
     }
@@ -919,7 +712,6 @@ function bindEvents() {
           ['advert-opened', 'episode-opened'].includes(pending.stage)) {
         pending.leftAppAt = Date.now();
         pending.returnPrompted = false;
-
         saveSettings();
       }
     } else {
@@ -927,10 +719,7 @@ function bindEvents() {
     }
   });
 
-  window.addEventListener(
-    'focus',
-    handleReturnFromWhatsApp
-  );
+  window.addEventListener('focus', handleReturnFromWhatsApp);
 
   $('saveAllPlannerSlots')?.addEventListener('click', () => {
     setTimeout(() => {
@@ -945,9 +734,7 @@ function bindEvents() {
   });
 }
 
-/* =========================================
-   INITIALIZATION
-========================================= */
+/* ---------- START ---------- */
 
 function init() {
   if (!store()) return;
@@ -968,15 +755,8 @@ function init() {
       slot.type = 'serial';
     }
 
-    slot.season = Math.max(
-      1,
-      Number(slot.season || 1)
-    );
-
-    slot.episode = Math.max(
-      1,
-      Number(slot.episode || 1)
-    );
+    slot.season = Math.max(1, Number(slot.season || 1));
+    slot.episode = Math.max(1, Number(slot.episode || 1));
   });
 
   saveSettings();
@@ -989,14 +769,9 @@ function init() {
     renderPostingControls();
   }, 15000);
 
-  console.log(
-    'Channel Studio Planner posting controls v18 loaded.'
-  );
+  console.log('Timed Planner daily queue completion fix loaded.');
 }
 
-document.addEventListener(
-  'DOMContentLoaded',
-  init
-);
+document.addEventListener('DOMContentLoaded', init);
 
 })();
