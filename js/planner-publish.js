@@ -1,3 +1,4 @@
+
 (function () {
 'use strict';
 
@@ -199,6 +200,8 @@ function getPendingEpisode(slotName) {
 
   const slot = settings.slots[slotName];
 
+  if (!slot) return null;
+
   return storyEpisodes(slot).find(ep =>
     String(ep.id) === String(pending.episodeId)
   );
@@ -233,6 +236,7 @@ async function startAdvertisement(slotName) {
 
   if (settings.pending) {
     window.studioToast?.('Finish or cancel the current posting sequence first.');
+    renderPostingControls();
     return;
   }
 
@@ -280,7 +284,7 @@ function confirmAdvertisement(slotName) {
   }
 
   if (!confirm('Have you published the advertisement in your WhatsApp Channel?')) {
-    pending.returnPrompted = true;
+    pending.returnPrompted = false;
     saveSettings();
     renderPostingControls();
     return;
@@ -426,6 +430,103 @@ function confirmEpisode(slotName) {
   document.dispatchEvent(new Event('planner:posts-updated'));
 }
 
+/* ---------- SAFE PENDING-SEQUENCE RECOVERY ---------- */
+
+function ensureRecoveryPanel() {
+  let panel = $('plannerPendingRecovery');
+
+  if (panel) return panel;
+
+  panel = document.createElement('section');
+  panel.id = 'plannerPendingRecovery';
+  panel.className = 'planner-slot-status';
+  panel.style.margin = '12px 0';
+  panel.style.padding = '14px';
+  panel.style.borderRadius = '14px';
+  panel.style.border = '1px solid var(--border, rgba(128,128,128,.35))';
+  panel.style.display = 'none';
+
+  const firstSlot = document.querySelector('[data-slot]');
+
+  if (firstSlot && firstSlot.parentElement) {
+    firstSlot.parentElement.insertBefore(panel, firstSlot);
+  } else {
+    const target = document.querySelector('main') ||
+      document.querySelector('.app-content') ||
+      document.body;
+
+    target.prepend(panel);
+  }
+
+  return panel;
+}
+
+function renderRecoveryPanel() {
+  const panel = ensureRecoveryPanel();
+  const pending = settings?.pending;
+
+  if (!pending) {
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+
+  const slotName = SLOT_NAMES.includes(pending.slot)
+    ? pending.slot
+    : 'unknown';
+
+  const stageNames = {
+    'advert-opened': 'Advertisement awaiting confirmation',
+    'advert-confirmed': 'Advertisement confirmed — episode is ready',
+    'episode-opened': 'Episode awaiting confirmation'
+  };
+
+  const stageText = stageNames[pending.stage] || 'Interrupted posting sequence';
+
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <p><strong>⚠️ A posting sequence is still active</strong></p>
+    <p class="small muted">
+      Slot: ${esc(slotName)}<br>
+      Stage: ${esc(stageText)}<br>
+      Episode: ${esc(pending.episodeLabel || 'Not available')}
+    </p>
+    <p class="small muted">
+      Resume the sequence in its slot, or cancel it if you no longer need it.
+      Cancelling does not delete your story or episode.
+    </p>
+    <button type="button" class="button ghost" data-cancel-any-sequence>
+      ✖ Cancel stuck sequence
+    </button>
+  `;
+}
+
+function cancelAnyPending() {
+  if (!settings.pending) {
+    window.studioToast?.('There is no active posting sequence to cancel.');
+    renderPostingControls();
+    return;
+  }
+
+  const pending = settings.pending;
+  const slotName = pending.slot || 'unknown';
+
+  if (!confirm(
+    `Cancel the pending posting sequence for the ${slotName} slot?\n\nYour story, episode, and saved planner settings will NOT be deleted. The episode will remain available to post.`
+  )) {
+    return;
+  }
+
+  // Only clear the unfinished sequence.
+  settings.pending = null;
+
+  saveSettings();
+
+  renderPostingControls();
+
+  window.studioToast?.('Pending sequence cancelled. Your episode is still saved.');
+}
+
 function handleReturnFromWhatsApp() {
   if (returnCheckLock || document.hidden) return;
 
@@ -461,19 +562,13 @@ function handleReturnFromWhatsApp() {
 
 function cancelPending(slotName) {
   if (!settings.pending || settings.pending.slot !== slotName) return;
-
-  if (!confirm('Cancel this pending posting sequence? The episode will remain unpublished.')) {
-    return;
-  }
-
-  settings.pending = null;
-
-  saveSettings();
-  renderPostingControls();
+  cancelAnyPending();
 }
 
 function renderPostingControls() {
   if (!settings?.slots) return;
+
+  renderRecoveryPanel();
 
   SLOT_NAMES.forEach(slotName => {
     const panel = document.querySelector(`[data-slot="${slotName}"]`);
@@ -536,6 +631,12 @@ function renderPostingControls() {
       return;
     }
 
+    if (settings.pending && !isPending) {
+      controls.innerHTML =
+        '<p class="small muted">Another slot currently has an unfinished posting sequence. Use the recovery panel above to resume or cancel it.</p>';
+      return;
+    }
+
     if (!ep) {
       controls.innerHTML =
         '<p>🎉 No more unpublished episodes found for this queue.</p>';
@@ -559,7 +660,7 @@ function renderPostingControls() {
     }
 
     controls.innerHTML = `
-      <p><strong>Next episode: ${esc(episodeLabel(ep, slot.type))}</strong></p>
+      <p><strong>Next episode: ${esc(episodeLabel(ep, slot.type))}</p>
       <button type="button" class="button primary" data-start-advert="${slotName}">📢 Prepare advertisement & open WhatsApp</button>
     `;
   });
@@ -567,35 +668,43 @@ function renderPostingControls() {
 
 function bindEvents() {
   document.addEventListener('click', event => {
-    const start = event.target.closest('[data-start-advert]');
+    const target = event.target.closest('button');
+    if (!target) return;
+
+    if (target.hasAttribute('data-cancel-any-sequence')) {
+      cancelAnyPending();
+      return;
+    }
+
+    const start = target.closest('[data-start-advert]');
 
     if (start) {
       startAdvertisement(start.dataset.startAdvert);
       return;
     }
 
-    const advert = event.target.closest('[data-confirm-advert]');
+    const advert = target.closest('[data-confirm-advert]');
 
     if (advert) {
       confirmAdvertisement(advert.dataset.confirmAdvert);
       return;
     }
 
-    const prepare = event.target.closest('[data-prepare-episode]');
+    const prepare = target.closest('[data-prepare-episode]');
 
     if (prepare) {
       prepareEpisode(prepare.dataset.prepareEpisode);
       return;
     }
 
-    const confirmButton = event.target.closest('[data-confirm-episode]');
+    const confirmButton = target.closest('[data-confirm-episode]');
 
     if (confirmButton) {
       confirmEpisode(confirmButton.dataset.confirmEpisode);
       return;
     }
 
-    const cancel = event.target.closest('[data-cancel-sequence]');
+    const cancel = target.closest('[data-cancel-sequence]');
 
     if (cancel) {
       cancelPending(cancel.dataset.cancelSequence);
