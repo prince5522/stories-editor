@@ -340,3 +340,422 @@ body[data-theme="dark"] #taskMediaSelect {
   color: #f1f5fb !important;
   border-color: rgba(140,220,220,.28) !important;
 }
+
+/* =========================================================
+   CHANNEL STUDIO — GLOBAL WALLPAPER & APPEARANCE UPGRADE
+   ========================================================= */
+
+/* Font choices */
+body[data-font="modern"] {
+  --app-font: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body[data-font="rounded"] {
+  --app-font: "Trebuchet MS", "Arial Rounded MT Bold", system-ui, sans-serif;
+}
+
+body[data-font="handwriting"] {
+  --app-font: "Segoe Print", "Bradley Hand", cursive;
+}
+
+body[data-font="serif"] {
+  --app-font: Georgia, "Times New Roman", serif;
+}
+
+body[data-font="montserrat"] {
+  --app-font: "Montserrat", "Segoe UI", sans-serif;
+}
+
+body[data-font="outfit"] {
+  --app-font: "Outfit", "Trebuchet MS", sans-serif;
+}
+
+body[data-font="gothic"] {
+  --app-font: "Old English Text MT", "UnifrakturCook", Georgia, serif;
+}
+
+body[data-font="mono"] {
+  --app-font: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+body {
+  font-family: var(--app-font, Inter, system-ui, sans-serif);
+}
+
+/* Global wallpaper foundation */
+body {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--bg, #101827);
+  background-image:
+    radial-gradient(ellipse at 12% 10%, var(--glow-one, #087dce35), transparent 38%),
+    radial-gradient(ellipse at 90% 25%, var(--glow-two, #0bc49a30), transparent 38%),
+    radial-gradient(ellipse at 55% 100%, var(--glow-three, #7258e820), transparent 45%);
+  background-attachment: fixed;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: .32;
+  background-image:
+    linear-gradient(120deg, transparent 48%, rgba(255,255,255,.035) 49%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(255,255,255,.08) 1px, transparent 1.5px);
+  background-size: 100% 100%, 30px 30px;
+}
+
+/* Theme palettes */
+body[data-theme="light"] {
+  --bg: #edf3fa;
+  --panel: rgba(255,255,255,.78);
+  --surface: rgba(255,255,255,.72);
+  --text: #172033;
+  --muted: #66758a;
+  --line: rgba(100,125,155,.22);
+  --accent: #087dce;
+  --soft: #e5f6f3;
+  --glow-one: #5ab9f555;
+  --glow-two: #37d6b455;
+  --glow-three: #a78bfa30;
+}
+
+body[data-theme="dark"] {
+  --bg: #101827;
+  --panel: rgba(24,34,53,.82);
+  --surface: rgba(27,42,64,.78);
+  --text: #f1f5fb;
+  --muted: #a8b4c8;
+  --line: rgba(148,170,200,.20);
+  --accent: #19c9a4;
+  --soft: #173d3a;
+  --glow-one: #087dce55;
+  --glow-two: #0bc49a40;
+  --glow-three: #7258e830;
+}
+
+body[data-theme="ocean"] {
+  --bg: #071d32;
+  --panel: rgba(13,48,72,.82);
+  --surface: rgba(16,57,83,.78);
+  --text: #eaf8ff;
+  --muted: #a4c4d8;
+  --line: rgba(94,190,225,.24);
+  --accent: #28c8e8;
+  --soft: #103b54;
+  --glow-one: #087dce70;
+  --glow-two: #00d4b050;
+  --glow-three: #2867d840;
+}
+
+body[data-theme="sunset"] {
+  --bg: #281727;
+  --panel: rgba(63,34,52,.84);
+  --surface: rgba(78,43,60,.78);
+  --text: #fff2ee;
+  --muted: #e2b8b0;
+  --line: rgba(255,180,160,.22);
+  --accent: #ff9876;
+  --soft: #583448;
+  --glow-one: #ff704855;
+  --glow-two: #ffbd5950;
+  --glow-three: #b34b9b40;
+}
+
+body[data-theme="forest"] {
+  --bg: #10251e;
+  --panel: rgba(26,54,42,.84);
+  --surface: rgba(32,67,51,.78);
+  --text: #edfff2;
+  --muted: #b0cdb8;
+  --line: rgba(135,200,150,.22);
+  --accent: #62d99b;
+  --soft: #1c4431;
+  --glow-one: #168b5b55;
+  --glow-two: #7cb34240;
+  --glow-three: #087dce30;
+}
+
+body[data-theme="midnight"] {
+  --bg: #080d20;
+  --panel: rgba(19,25,48,.88);
+  --surface: rgba(27,35,65,.82);
+  --text: #eef0ff;
+  --muted: #a5acd0;
+  --line: rgba(135,145,220,.22);
+  --accent: #8294ff;
+  --soft: #252c56;
+  --glow-one: #4355e866;
+  --glow-two: #0c9dc955;
+  --glow-three: #a35cff35;
+}
+
+body[data-theme="rose"] {
+  --bg: #2b1727;
+  --panel: rgba(67,35,58,.85);
+  --surface: rgba(83,43,72,.80);
+  --text: #fff0f7;
+  --muted: #e1b8cf;
+  --line: rgba(240,155,200,.22);
+  --accent: #ff82b8;
+  --soft: #57304c;
+  --glow-one: #f044a555;
+  --glow-two: #ff8bba45;
+  --glow-three: #8c5cf035;
+}
+
+body[data-theme="arctic"] {
+  --bg: #142638;
+  --panel: rgba(35,59,78,.83);
+  --surface: rgba(44,73,94,.78);
+  --text: #f1fbff;
+  --muted: #bdd3e1;
+  --line: rgba(175,220,245,.25);
+  --accent: #7bdcff;
+  --soft: #27485e;
+  --glow-one: #7bdcff55;
+  --glow-two: #5b9dff45;
+  --glow-three: #c3f4ff30;
+}
+
+body[data-theme="neon"] {
+  --bg: #100d20;
+  --panel: rgba(30,23,52,.87);
+  --surface: rgba(42,32,70,.82);
+  --text: #f7f1ff;
+  --muted: #c1afd9;
+  --line: rgba(190,100,255,.28);
+  --accent: #38f5d0;
+  --soft: #352052;
+  --glow-one: #8b35ff66;
+  --glow-two: #00e5c455;
+  --glow-three: #ff3caa35;
+}
+
+body[data-theme="amoled"] {
+  --bg: #000000;
+  --panel: rgba(15,18,23,.94);
+  --surface: rgba(22,25,31,.90);
+  --text: #ffffff;
+  --muted: #a5aab5;
+  --line: rgba(255,255,255,.13);
+  --accent: #20d6ae;
+  --soft: #102b25;
+  --glow-one: #087dce28;
+  --glow-two: #0bc49a25;
+  --glow-three: #7258e820;
+}
+
+/* Whole-app glass surfaces */
+.sidebar,
+.stat-card,
+.quick-card,
+.panel,
+.content-card,
+.section-block,
+.list-item,
+.account-item,
+.account-card,
+.switch-account-item,
+.account-menu,
+.switch-account-menu,
+.account-dropdown,
+.agenda-item,
+.week-day,
+.week-summary span,
+.notice.info {
+  background-color: var(--panel, rgba(255,255,255,.78));
+  border-color: var(--line, rgba(100,125,155,.22));
+  backdrop-filter: blur(20px) saturate(155%);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
+}
+
+/* Navigation */
+.sidebar {
+  background-color: var(--panel);
+  border-color: var(--line);
+}
+
+.nav-link {
+  color: var(--muted);
+}
+
+.nav-link:hover,
+.nav-link.active {
+  background: var(--soft);
+  color: var(--accent);
+}
+
+/* Top navigation */
+.topbar {
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  border-color: var(--line);
+}
+
+.icon-button,
+.avatar-link {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+/* Form controls */
+input,
+select,
+textarea,
+.form-grid input,
+.form-grid textarea,
+.form-grid select,
+.search-label input,
+.creator-controls select,
+.goal-control input {
+  color: var(--text);
+  background-color: var(--surface, var(--panel));
+  border-color: var(--line);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: .8;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+
+/* Glass welcome screen */
+.welcome-page {
+  min-height: 100svh;
+  background:
+    radial-gradient(ellipse at 10% 10%, var(--glow-two), transparent 40%),
+    radial-gradient(ellipse at 90% 20%, var(--glow-one), transparent 40%),
+    radial-gradient(ellipse at 70% 100%, var(--glow-three), transparent 45%),
+    var(--bg);
+}
+
+.welcome-shell {
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border-color: var(--line);
+  backdrop-filter: blur(28px) saturate(170%);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  box-shadow: 0 30px 100px rgba(0,0,0,.20);
+}
+
+.welcome-copy {
+  color: var(--muted);
+}
+
+.welcome-topline,
+.art-chip {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--line);
+  backdrop-filter: blur(18px);
+}
+
+.welcome-benefits span {
+  background: var(--soft);
+  color: var(--accent);
+  border-color: var(--line);
+}
+
+.welcome-bottom {
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+/* Hero sections */
+.hero-card,
+.doc-hero {
+  background:
+    linear-gradient(130deg, var(--glow-two), var(--glow-one)),
+    var(--panel);
+  color: var(--text);
+}
+
+.doc-hero p:not(.eyebrow) {
+  color: var(--muted);
+}
+
+/* Story and planner details */
+.season-badge {
+  background: var(--soft);
+  color: var(--accent);
+}
+
+.week-task {
+  background: var(--soft);
+}
+
+.episode-content-preview,
+.doc-content,
+.due-post-copy {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--line);
+}
+
+/* Consistent buttons */
+.button.ghost,
+.story-actions .btn,
+.preview-actions .btn {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.item-actions .button.ghost {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border-color: var(--line) !important;
+}
+
+/* Keep text readable on every palette */
+.page-title,
+.section-heading h2,
+.list-item h3,
+.account-details strong,
+.account-info strong {
+  color: var(--text);
+}
+
+.page-intro,
+.muted,
+.quick-card small {
+  color: var(--muted);
+}
+
+/* Reduced-motion preference */
+body[data-motion="reduced"] *,
+body[data-motion="reduced"] *::before,
+body[data-motion="reduced"] *::after {
+  animation-duration: .01ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: .01ms !important;
+}
+
+/* Mobile wallpaper and glass optimization */
+@media(max-width:650px) {
+  body {
+    background-attachment: scroll;
+  }
+
+  .sidebar {
+    background-color: var(--panel);
+    backdrop-filter: blur(26px) saturate(160%);
+    -webkit-backdrop-filter: blur(26px) saturate(160%);
+  }
+
+  .welcome-shell {
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+  }
+}
+
