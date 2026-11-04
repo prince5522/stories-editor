@@ -2,6 +2,11 @@
 (function () {
   'use strict';
 
+  /* ==========================================
+     CHANNEL STUDIO — APPEARANCE CONTROLLER
+     Themes, fonts, motion and saved preferences
+     ========================================== */
+
   const DEFAULTS = {
     theme: 'system',
     font: 'modern',
@@ -9,28 +14,14 @@
   };
 
   const THEMES = [
-    'system',
-    'light',
-    'dark',
-    'ocean',
-    'sunset',
-    'forest',
-    'midnight',
-    'rose',
-    'arctic',
-    'neon',
+    'system', 'light', 'dark', 'ocean', 'sunset',
+    'forest', 'midnight', 'rose', 'arctic', 'neon',
     'amoled'
   ];
 
   const FONTS = [
-    'modern',
-    'rounded',
-    'handwriting',
-    'serif',
-    'montserrat',
-    'outfit',
-    'gothic',
-    'mono'
+    'modern', 'rounded', 'handwriting', 'serif',
+    'montserrat', 'outfit', 'gothic', 'mono'
   ];
 
   const MOTIONS = ['full', 'reduced'];
@@ -60,6 +51,27 @@
     mono: 'Monospace'
   };
 
+  const FONT_STACKS = {
+    modern: 'Inter, system-ui, -apple-system, "Segoe UI", sans-serif',
+    rounded: '"Trebuchet MS", "Arial Rounded MT Bold", system-ui, sans-serif',
+    handwriting: '"Comic Sans MS", "Segoe Print", "Bradley Hand", cursive',
+    serif: 'Georgia, "Times New Roman", serif',
+    montserrat: 'Montserrat, Arial, sans-serif',
+    outfit: 'Outfit, "Trebuchet MS", sans-serif',
+    gothic: '"Old English Text MT", "UnifrakturCook", "Lucida Blackletter", Georgia, serif',
+    mono: '"SFMono-Regular", Consolas, "Liberation Mono", monospace'
+  };
+
+  const DARK_THEMES = [
+    'dark', 'ocean', 'forest', 'midnight', 'neon', 'amoled'
+  ];
+
+  function normalize(value, allowed, fallback) {
+    return allowed.includes(value) ? value : fallback;
+  }
+
+  /* ---------- STORAGE ---------- */
+
   function getSetting(key) {
     try {
       const store = window.StudioStore;
@@ -71,10 +83,13 @@
           return value;
         }
       }
-    } catch (error) {}
+    } catch (error) {
+      console.warn('Appearance read error:', error);
+    }
 
     try {
       const value = localStorage.getItem('studio_' + key);
+
       if (value !== null) return value;
     } catch (error) {}
 
@@ -82,24 +97,29 @@
   }
 
   function setSetting(key, value) {
+    let saved = false;
+
     try {
-      if (
-        window.StudioStore &&
-        typeof window.StudioStore.set === 'function'
-      ) {
-        window.StudioStore.set(key, value);
-        return;
+      const store = window.StudioStore;
+
+      if (store && typeof store.set === 'function') {
+        store.set(key, value);
+        saved = true;
       }
-    } catch (error) {}
+    } catch (error) {
+      console.warn('Appearance save error:', error);
+    }
 
-    try {
-      localStorage.setItem('studio_' + key, value);
-    } catch (error) {}
+    if (!saved) {
+      try {
+        localStorage.setItem('studio_' + key, value);
+      } catch (error) {
+        console.warn('Local appearance save error:', error);
+      }
+    }
   }
 
-  function normalize(value, allowed, fallback) {
-    return allowed.includes(value) ? value : fallback;
-  }
+  /* ---------- SELECT OPTIONS ---------- */
 
   function addMissingOptions(select, values, labels) {
     if (!select) return;
@@ -118,17 +138,80 @@
     });
   }
 
+  function updateSelectors(theme, font, motion) {
+    const themeSelect = document.getElementById('themeSelect');
+    const fontSelect = document.getElementById('fontSelect');
+    const motionSelect = document.getElementById('motionSelect');
+
+    addMissingOptions(themeSelect, THEMES, THEME_LABELS);
+    addMissingOptions(fontSelect, FONTS, FONT_LABELS);
+
+    if (themeSelect) themeSelect.value = theme;
+    if (fontSelect) fontSelect.value = font;
+    if (motionSelect) motionSelect.value = motion;
+  }
+
+  /* ---------- APPLY FONT ---------- */
+
+  function applyFont(font) {
+    const stack = FONT_STACKS[font] || FONT_STACKS.modern;
+
+    document.documentElement.dataset.font = font;
+    document.documentElement.style.setProperty(
+      '--studio-font-family',
+      stack
+    );
+
+    if (document.body) {
+      document.body.dataset.font = font;
+      document.body.style.setProperty(
+        '--studio-font-family',
+        stack
+      );
+
+      document.body.style.fontFamily = stack;
+    }
+  }
+
+  /* ---------- APPLY THEME ---------- */
+
+  function applyTheme(theme) {
+    const systemDark = Boolean(
+      window.matchMedia &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches
+    );
+
+    const actualTheme = theme === 'system'
+      ? (systemDark ? 'dark' : 'light')
+      : theme;
+
+    document.documentElement.dataset.theme = actualTheme;
+    document.documentElement.dataset.savedTheme = theme;
+
+    document.documentElement.style.colorScheme =
+      DARK_THEMES.includes(actualTheme) ? 'dark' : 'light';
+
+    if (document.body) {
+      document.body.dataset.theme = actualTheme;
+      document.body.dataset.savedTheme = theme;
+    }
+
+    return actualTheme;
+  }
+
+  /* ---------- MAIN APPLY FUNCTION ---------- */
+
   function apply() {
-    const savedTheme = normalize(
+    const theme = normalize(
       getSetting('theme'),
       THEMES,
-      'system'
+      DEFAULTS.theme
     );
 
     const font = normalize(
       getSetting('font'),
       FONTS,
-      'modern'
+      DEFAULTS.font
     );
 
     let motion = getSetting('motion');
@@ -139,89 +222,97 @@
       motion = 'full';
     }
 
-    const systemDark = Boolean(
-      window.matchMedia &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches
-    );
+    applyTheme(theme);
+    applyFont(font);
 
-    const actualTheme = savedTheme === 'system'
-      ? (systemDark ? 'dark' : 'light')
-      : savedTheme;
-
-    document.documentElement.dataset.theme = actualTheme;
+    document.documentElement.dataset.motion = motion;
 
     if (document.body) {
-      document.body.dataset.theme = actualTheme;
-      document.body.dataset.font = font;
       document.body.dataset.motion = motion;
     }
 
-    const themeSelect = document.getElementById('themeSelect');
-    addMissingOptions(themeSelect, THEMES, THEME_LABELS);
+    updateSelectors(theme, font, motion);
 
-    if (themeSelect) {
-      themeSelect.value = savedTheme;
-    }
+    return {
+      theme: theme,
+      font: font,
+      motion: motion
+    };
+  }
 
-    const fontSelect = document.getElementById('fontSelect');
-    addMissingOptions(fontSelect, FONTS, FONT_LABELS);
+  /* ---------- SAVE APPEARANCE ---------- */
 
-    if (fontSelect) {
-      fontSelect.value = font;
-    }
+  function saveStudioAppearance(theme, font, motion) {
+    theme = normalize(theme, THEMES, DEFAULTS.theme);
+    font = normalize(font, FONTS, DEFAULTS.font);
+    motion = normalize(motion, MOTIONS, DEFAULTS.motion);
 
-    const motionSelect = document.getElementById('motionSelect');
+    setSetting('theme', theme);
+    setSetting('font', font);
+    setSetting('motion', motion);
 
-    if (motionSelect) {
-      motionSelect.value = motion;
-    }
+    apply();
 
-    const darkThemes = [
-      'dark',
-      'forest',
-      'midnight',
-      'neon',
-      'amoled'
-    ];
-
-    document.documentElement.style.colorScheme =
-      darkThemes.includes(actualTheme) ? 'dark' : 'light';
+    window.dispatchEvent(
+      new CustomEvent('studio:appearance-changed', {
+        detail: {
+          theme: theme,
+          font: font,
+          motion: motion
+        }
+      })
+    );
   }
 
   window.applyStudioTheme = apply;
+  window.saveStudioAppearance = saveStudioAppearance;
 
-  window.saveStudioAppearance = function (theme, font, motion) {
-    setSetting(
-      'theme',
-      normalize(theme, THEMES, 'system')
-    );
+  /* ---------- AUTOMATIC SELECTOR LISTENERS ---------- */
 
-    setSetting(
-      'font',
-      normalize(font, FONTS, 'modern')
-    );
+  document.addEventListener('change', function (event) {
+    const target = event.target;
 
-    setSetting(
-      'motion',
-      normalize(motion, MOTIONS, 'full')
-    );
+    if (!target || !target.id) return;
 
-    apply();
-  };
+    if (
+      target.id === 'themeSelect' ||
+      target.id === 'fontSelect' ||
+      target.id === 'motionSelect'
+    ) {
+      const current = {
+        theme: getSetting('theme'),
+        font: getSetting('font'),
+        motion: getSetting('motion')
+      };
 
-  document.addEventListener('DOMContentLoaded', apply);
-  window.addEventListener('storage', apply);
+      const theme = target.id === 'themeSelect'
+        ? target.value
+        : current.theme;
+
+      const font = target.id === 'fontSelect'
+        ? target.value
+        : current.font;
+
+      const motion = target.id === 'motionSelect'
+        ? target.value
+        : current.motion;
+
+      saveStudioAppearance(theme, font, motion);
+    }
+  });
+
+  /* ---------- SYSTEM PREFERENCE ---------- */
 
   if (window.matchMedia) {
     const preference = window.matchMedia(
       '(prefers-color-scheme: dark)'
     );
 
-    const handlePreferenceChange = function () {
+    function handlePreferenceChange() {
       if (getSetting('theme') === 'system') {
         apply();
       }
-    };
+    }
 
     if (preference.addEventListener) {
       preference.addEventListener('change', handlePreferenceChange);
@@ -230,7 +321,16 @@
     }
   }
 
+  /* ---------- INITIALIZATION ---------- */
+
+  document.addEventListener('DOMContentLoaded', apply);
+
+  window.addEventListener('storage', function () {
+    apply();
+  });
+
   if (document.readyState !== 'loading') {
     apply();
   }
+
 })();
