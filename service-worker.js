@@ -1,10 +1,10 @@
 
 /* =========================================
-   CHANNEL STUDIO v17
-   Updated app shell + reliable cache refresh
+   CHANNEL STUDIO v18
+   Planner queue updates + reliable cache refresh
 ========================================= */
 
-const CACHE = 'channel-studio-shell-v17';
+const CACHE = 'channel-studio-shell-v18';
 
 const CORE = [
   './',
@@ -62,7 +62,6 @@ const CORE = [
 
 /* =========================================
    INSTALL
-   Precache available app files.
 ========================================= */
 
 self.addEventListener('install', event => {
@@ -103,7 +102,6 @@ self.addEventListener('install', event => {
 
 /* =========================================
    ACTIVATE
-   Remove previous app shell caches.
 ========================================= */
 
 self.addEventListener('activate', event => {
@@ -121,7 +119,7 @@ self.addEventListener('activate', event => {
 
     await self.clients.claim();
 
-    console.log('[Channel Studio] v17 activated');
+    console.log('[Channel Studio] v18 activated');
   })());
 });
 
@@ -204,9 +202,7 @@ async function cacheFirst(request) {
     ignoreSearch: true
   });
 
-  if (cached) {
-    return cached;
-  }
+  if (cached) return cached;
 
   try {
     const response = await fetch(request);
@@ -226,8 +222,6 @@ async function cacheFirst(request) {
 
 /* =========================================
    FETCH
-   Network first for app code and pages.
-   Cache first for other static resources.
 ========================================= */
 
 self.addEventListener('fetch', event => {
@@ -259,7 +253,10 @@ self.addEventListener('notificationclick', event => {
     'planner.html';
 
   event.waitUntil((async () => {
-    const targetURL = new URL(target, self.registration.scope);
+    const targetURL = new URL(
+      target,
+      self.registration.scope
+    );
 
     const windows = await self.clients.matchAll({
       type: 'window',
