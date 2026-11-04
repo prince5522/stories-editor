@@ -56,9 +56,26 @@ function isSlotDue(slot) {
   return new Date() >= scheduled;
 }
 
+/* ---------- COMPLETION CHECKS ---------- */
+
 function alreadyCompletedToday(slotName) {
   return settings.slotRuns?.[slotName] === todayKey();
 }
+
+function episodeAlreadyCompleted(slotName, episodeId) {
+  const records = settings.completed?.[slotName] || [];
+
+  return records.some(item =>
+    String(item.episodeId) === String(episodeId) &&
+    String(item.completedAt || '').slice(0, 10) === todayKey()
+  );
+}
+
+function slotHasCompletedToday(slotName) {
+  return alreadyCompletedToday(slotName);
+}
+
+/* ---------- EPISODES ---------- */
 
 function storyEpisodes(slot) {
   if (slot.type === 'ready') {
@@ -154,6 +171,8 @@ function episodeText(ep, type) {
   ].join('\n\n');
 }
 
+/* ---------- WHATSAPP ---------- */
+
 function openChannel(url) {
   if (!url) {
     window.studioToast?.('Choose a WhatsApp Channel first.');
@@ -193,6 +212,8 @@ async function copyText(text) {
   }
 }
 
+/* ---------- POSTING SEQUENCE ---------- */
+
 function getPendingEpisode(slotName) {
   const pending = settings.pending;
 
@@ -223,13 +244,14 @@ function setPending(slotName, stage, ep) {
 async function startAdvertisement(slotName) {
   const slot = settings.slots[slotName];
 
-  if (!isSlotDue(slot)) {
-    window.studioToast?.(`This slot becomes available at ${slot.time}.`);
+  if (slotHasCompletedToday(slotName)) {
+    window.studioToast?.('This slot has already been posted today. ✅');
+    renderPostingControls();
     return;
   }
 
-  if (alreadyCompletedToday(slotName)) {
-    window.studioToast?.('This slot has already been completed today.');
+  if (!isSlotDue(slot)) {
+    window.studioToast?.(`This slot becomes available at ${slot.time}.`);
     return;
   }
 
@@ -243,6 +265,13 @@ async function startAdvertisement(slotName) {
 
   if (!ep) {
     window.studioToast?.('No unpublished episode remains in this queue.');
+    renderPostingControls();
+    return;
+  }
+
+  if (episodeAlreadyCompleted(slotName, ep.id)) {
+    window.studioToast?.('This episode is already recorded as posted today.');
+    renderPostingControls();
     return;
   }
 
@@ -543,7 +572,6 @@ function handleReturnFromWhatsApp() {
 
   const elapsed = Date.now() - Number(pending.leftAppAt);
 
-  // Ignore accidental focus events immediately after opening WhatsApp.
   if (elapsed < 1000) {
     returnCheckLock = false;
     return;
@@ -587,9 +615,14 @@ function renderPostingControls() {
     const pending = settings.pending;
     const isPending = pending && pending.slot === slotName;
 
-    const ep = isPending
-      ? getPendingEpisode(slotName)
-      : findNextEpisode(slot);
+    /* COMPLETED STATUS HAS TOP PRIORITY */
+    if (!isPending && slotHasCompletedToday(slotName)) {
+      controls.innerHTML = `
+        <p><strong>✅ Posted for today</strong></p>
+        <p class="small muted">The ${esc(slotName)} queue is complete. Your next posting will be available tomorrow at ${esc(slot.time || 'its scheduled time')}.</p>
+      `;
+      return;
+    }
 
     if (!slot.storyName || !slot.channelUrl) {
       controls.innerHTML =
@@ -632,16 +665,18 @@ function renderPostingControls() {
       return;
     }
 
+    const ep = findNextEpisode(slot);
+
     if (!ep) {
       controls.innerHTML =
         '<p>🎉 No more unpublished episodes found for this queue.</p>';
       return;
     }
 
-    if (alreadyCompletedToday(slotName)) {
+    if (episodeAlreadyCompleted(slotName, ep.id)) {
       controls.innerHTML = `
-        <p><strong>✅ Today’s slot is complete</strong></p>
-        <p class="small muted">The next episode will be available tomorrow at ${esc(slot.time || 'the scheduled time')}.</p>
+        <p><strong>✅ This episode is already recorded as posted</strong></p>
+        <p class="small muted">The queue will not offer this episode again.</p>
       `;
       return;
     }
@@ -655,7 +690,7 @@ function renderPostingControls() {
     }
 
     controls.innerHTML = `
-      <p><strong>Next episode: ${esc(episodeLabel(ep, slot.type))}</strong></p>
+      <p><strong>Next episode: ${esc(episodeLabel(ep, slot.type))}</p>
       <button type="button" class="button primary" data-start-advert="${slotName}">📢 Prepare advertisement & open WhatsApp</button>
     `;
   });
@@ -756,7 +791,7 @@ function init() {
     renderPostingControls();
   }, 15000);
 
-  console.log('Timed Planner automatic return workflow loaded.');
+  console.log('Timed Planner posting controls v18 loaded.');
 }
 
 document.addEventListener('DOMContentLoaded', init);
