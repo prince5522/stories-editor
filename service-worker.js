@@ -1,10 +1,14 @@
 
 /* =========================================
-   CHANNEL STUDIO v18
-   Planner queue updates + reliable cache refresh
+   CHANNEL STUDIO v19
+   OFFLINE-FIRST PERFORMANCE
+   - Cached pages load immediately
+   - Background updates when online
+   - Migrates v18 cache before removing it
+   - Preserves Planner and notification support
 ========================================= */
 
-const CACHE = 'channel-studio-shell-v18';
+const CACHE = 'channel-studio-shell-v19';
 
 const CORE = [
   './',
@@ -55,6 +59,7 @@ const CORE = [
   'js/ready-made.js',
   'js/supabase-cloud.js',
   'js/whatsapp-shell.js',
+  'js/wallpaper.js',
 
   'assets/icons/icon-192.png',
   'assets/icons/icon-512.png'
@@ -62,41 +67,64 @@ const CORE = [
 
 /* =========================================
    INSTALL
+   Migrate old cache first, then update files.
 ========================================= */
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-
-    await Promise.all(
-      CORE.map(async path => {
-        try {
-          const request = new Request(path, {
-            cache: 'reload'
-          });
-
-          const response = await fetch(request);
-
-          if (response.ok) {
-            await cache.put(request, response);
-          } else {
-            console.warn(
-              '[Channel Studio] Precache failed:',
-              path,
-              response.status
-            );
-          }
-        } catch (error) {
-          console.warn(
-            '[Channel Studio] Could not precache:',
-            path,
-            error
-          );
-        }
-      })
+    const oldCaches = (await caches.keys()).filter(name =>
+      name.startsWith('channel-studio-shell-') &&
+      name !== CACHE
     );
 
+    // Preserve previously cached files.
+    for (const oldName of oldCaches) {
+      try {
+        const oldCache = await caches.open(oldName);
+        const requests = await oldCache.keys();
+
+        await Promise.all(requests.map(async request => {
+          try {
+            const existing = await cache.match(request);
+
+            if (existing) return;
+
+            const response = await oldCache.match(request);
+
+            if (response) {
+              await cache.put(request, response);
+            }
+          } catch (error) {
+            console.warn('[Channel Studio] Cache migration item failed:', error);
+          }
+        }));
+      } catch (error) {
+        console.warn('[Channel Studio] Old cache migration failed:', error);
+      }
+    }
+
+    // Refresh core files when internet is available.
+    // If offline, migrated cached copies remain available.
+    await Promise.all(CORE.map(async path => {
+      try {
+        const request = new Request(path, {
+          cache: 'reload'
+        });
+
+        const response = await fetch(request);
+
+        if (response && response.ok) {
+          await cache.put(request, response);
+        }
+      } catch (error) {
+        // Offline installation: keep the migrated copy.
+      }
+    }));
+
     await self.skipWaiting();
+
+    console.log('[Channel Studio] v19 installed');
   })());
 });
 
@@ -110,16 +138,16 @@ self.addEventListener('activate', event => {
 
     await Promise.all(
       keys
-        .filter(key =>
-          key.startsWith('channel-studio-shell-') &&
-          key !== CACHE
+        .filter(name =>
+          name.startsWith('channel-studio-shell-') &&
+          name !== CACHE
         )
-        .map(key => caches.delete(key))
+        .map(name => caches.delete(name))
     );
 
     await self.clients.claim();
 
-    console.log('[Channel Studio] v18 activated');
+    console.log('[Channel Studio] v19 activated');
   })());
 });
 
@@ -134,77 +162,49 @@ self.addEventListener('message', event => {
 });
 
 /* =========================================
-   REQUEST HELPERS
+   OFFLINE FALLBACK
 ========================================= */
 
-function isAppCodeOrPage(request) {
-  const destination = request.destination;
-  const url = new URL(request.url);
-  const path = url.pathname.toLowerCase();
-
-  return (
-    destination === 'document' ||
-    destination === 'script' ||
-    destination === 'style' ||
-    destination === 'worker' ||
-    path.endsWith('.html') ||
-    path.endsWith('.js') ||
-    path.endsWith('.css') ||
-    path.endsWith('.webmanifest')
-  );
-}
-
-async function networkFirst(request) {
-  const cache = await caches.open(CACHE);
-
-  try {
-    const response = await fetch(request, {
-      cache: 'no-cache'
-    });
-
-    if (response && response.ok) {
-      await cache.put(request, response.clone());
-    }
-
-    return response;
-  } catch (error) {
-    const cached = await cache.match(request, {
-      ignoreSearch: true
-    });
-
-    if (cached) return cached;
-
-    if (request.mode === 'navigate') {
-      const fallback =
+function offlineResponse(request) {
+  if (request.mode === 'navigate') {
+    return caches.open(CACHE).then(async cache => {
+      return (
         await cache.match('index.html') ||
-        await cache.match('./');
-
-      if (fallback) return fallback;
-    }
-
-    return new Response(
-      'You are offline. This item is not available yet.',
-      {
-        status: 503,
-        statusText: 'Offline',
-        headers: {
-          'Content-Type': 'text/plain; charset=utf-8'
-        }
-      }
-    );
+        await cache.match('./') ||
+        new Response(
+          'Channel Studio is offline and this page has not been cached yet.',
+          {
+            status: 503,
+            headers: {
+              'Content-Type': 'text/plain; charset=utf-8'
+            }
+          }
+        )
+      );
+    });
   }
+
+  return new Response('', {
+    status: 504,
+    statusText: 'Offline resource unavailable'
+  });
 }
 
-async function cacheFirst(request) {
-  const cache = await caches.open(CACHE);
+/* =========================================
+   CACHE-FIRST + BACKGROUND REFRESH
+========================================= */
 
-  const cached = await cache.match(request, {
-    ignoreSearch: true
-  });
+function handleRequest(request) {
+  const cachePromise = caches.open(CACHE);
 
-  if (cached) return cached;
+  const cachedPromise = cachePromise.then(cache =>
+    cache.match(request, {
+      ignoreSearch: true
+    })
+  );
 
-  try {
+  // Start refreshing in the background.
+  const networkPromise = cachePromise.then(async cache => {
     const response = await fetch(request);
 
     if (response && response.ok) {
@@ -212,12 +212,23 @@ async function cacheFirst(request) {
     }
 
     return response;
-  } catch (error) {
-    return new Response('Offline resource unavailable.', {
-      status: 503,
-      statusText: 'Offline'
-    });
-  }
+  });
+
+  return {
+    response: cachedPromise.then(cached => {
+      if (cached) {
+        return cached;
+      }
+
+      return networkPromise.catch(() =>
+        offlineResponse(request)
+      );
+    }).catch(() =>
+      offlineResponse(request)
+    ),
+
+    update: networkPromise.catch(() => undefined)
+  };
 }
 
 /* =========================================
@@ -231,13 +242,16 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(request.url);
 
+  // Do not intercept external services.
   if (url.origin !== self.location.origin) return;
 
-  if (isAppCodeOrPage(request)) {
-    event.respondWith(networkFirst(request));
-  } else {
-    event.respondWith(cacheFirst(request));
-  }
+  const result = handleRequest(request);
+
+  // Register background work immediately.
+  event.waitUntil(result.update);
+
+  // Return cached content without waiting for internet.
+  event.respondWith(result.response);
 });
 
 /* =========================================
