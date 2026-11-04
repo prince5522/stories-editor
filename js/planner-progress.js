@@ -1,3 +1,4 @@
+
 (function () {
 'use strict';
 
@@ -10,9 +11,7 @@ function getSettings() {
 }
 
 function getEpisodes(slot) {
-  const settings = getSettings();
-
-  if (!slot.storyName) return [];
+  if (!slot || !slot.storyName || !window.StudioStore) return [];
 
   if (slot.type === 'ready') {
     return (window.StudioStore.get('readyMadeEpisodes', []) || [])
@@ -25,13 +24,72 @@ function getEpisodes(slot) {
   return (window.StudioStore.get('episodes', []) || [])
     .filter(ep => {
       const name = ep.storyTitle || ep.seasonTitle || '';
-      return !ep.archived && name.toLowerCase() === slot.storyName.toLowerCase();
+      return !ep.archived &&
+        name.toLowerCase() === slot.storyName.toLowerCase();
     });
 }
 
 function getCompleted(settings, slotName) {
   return settings.completed?.[slotName] || [];
 }
+
+/* ---------- QUEUE PACKAGE ---------- */
+
+function ensureQueuePackage() {
+  const slots = document.querySelector('.planner-slots');
+  if (!slots) return null;
+
+  let packageBox = document.getElementById('plannerQueuePackage');
+
+  if (packageBox) return packageBox;
+
+  packageBox = document.createElement('details');
+  packageBox.id = 'plannerQueuePackage';
+  packageBox.className = 'planner-queue-package';
+
+  const summary = document.createElement('summary');
+  summary.className = 'planner-queue-package-summary';
+  summary.innerHTML = `
+    <span class="planner-queue-icon">📦</span>
+    <span class="planner-queue-heading">
+      <strong>My posting queues</strong>
+      <small>Morning · Lunch · Evening</small>
+    </span>
+    <span class="planner-queue-arrow">⌄</span>
+  `;
+
+  const content = document.createElement('div');
+  content.className = 'planner-queue-package-content';
+
+  slots.parentNode.insertBefore(packageBox, slots);
+  packageBox.appendChild(summary);
+  packageBox.appendChild(content);
+  content.appendChild(slots);
+
+  return packageBox;
+}
+
+function updateQueuePackage(settings) {
+  const packageBox = ensureQueuePackage();
+  if (!packageBox) return;
+
+  const summary = packageBox.querySelector('.planner-queue-package-summary');
+  if (!summary) return;
+
+  const configured = SLOT_NAMES.filter(name => {
+    const slot = settings.slots?.[name];
+    return slot && slot.storyName && slot.channelUrl;
+  }).length;
+
+  const subtitle = summary.querySelector('small');
+
+  if (subtitle) {
+    subtitle.textContent =
+      `${configured}/3 queues configured · Morning · Lunch · Evening`;
+  }
+}
+
+/* ---------- PROGRESS ---------- */
 
 function renderSlot(slotName, slot, settings) {
   const panel = document.querySelector(`[data-slot="${slotName}"]`);
@@ -50,7 +108,9 @@ function renderSlot(slotName, slot, settings) {
   const total = episodes.length;
   const done = completed.length;
   const remaining = Math.max(0, total - done);
-  const percent = total ? Math.min(100, Math.round(done / total * 100)) : 0;
+  const percent = total
+    ? Math.min(100, Math.round(done / total * 100))
+    : 0;
 
   box.innerHTML = `
     <div class="planner-progress-heading">
@@ -72,6 +132,8 @@ function renderSlot(slotName, slot, settings) {
   `;
 }
 
+/* ---------- COLLAPSIBLE HISTORY ---------- */
+
 function renderHistory(settings) {
   const panels = document.querySelectorAll('[data-slot]');
   if (!panels.length) return;
@@ -79,7 +141,7 @@ function renderHistory(settings) {
   let history = document.getElementById('plannerPostingHistory');
 
   if (!history) {
-    history = document.createElement('section');
+    history = document.createElement('details');
     history.id = 'plannerPostingHistory';
     history.className = 'planner-history';
 
@@ -107,19 +169,32 @@ function renderHistory(settings) {
   );
 
   history.innerHTML = `
-    <h3>🗂️ Posting history</h3>
-    ${
-      entries.length
-        ? entries.slice(0, 30).map(item => `
-          <div class="planner-history-item">
-            <strong>${escapeHTML(item.storyName)}</strong>
-            <span>${escapeHTML(item.label || 'Episode')}</span>
-            <small>${formatDate(item.completedAt)}</small>
-          </div>
-        `).join('')
-        : '<p class="small muted">Your completed episodes will appear here.</p>'
-    }
+    <summary class="planner-history-summary">
+      <span>🗂️ Posting history</span>
+      <span class="planner-history-count">${entries.length} records</span>
+      <span class="planner-queue-arrow">⌄</span>
+    </summary>
+
+    <div class="planner-history-content">
+      ${
+        entries.length
+          ? entries.slice(0, 50).map(item => `
+            <div class="planner-history-item">
+              <strong>${escapeHTML(item.storyName)}</strong>
+              <span>${escapeHTML(item.label || 'Episode')}</span>
+              <small>${escapeHTML(item.slotName)} · ${formatDate(item.completedAt)}</small>
+            </div>
+          `).join('')
+          : '<p class="small muted">Your completed episodes will appear here.</p>'
+      }
+    </div>
   `;
+
+  // Always start closed, but don't force it closed during normal refreshes.
+  if (!history.dataset.initialized) {
+    history.open = false;
+    history.dataset.initialized = 'true';
+  }
 }
 
 function escapeHTML(value) {
@@ -141,17 +216,86 @@ function formatDate(value) {
   return date.toLocaleString();
 }
 
+/* ---------- STYLES ---------- */
+
 function addStyles() {
   if (document.getElementById('plannerProgressStyles')) return;
 
   const style = document.createElement('style');
   style.id = 'plannerProgressStyles';
+
   style.textContent = `
+    .planner-queue-package,
+    .planner-history {
+      margin: 18px 0;
+      border: 1px solid var(--border-color, #8885);
+      border-radius: 18px;
+      overflow: hidden;
+      background: var(--card-bg, rgba(255,255,255,.045));
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    .planner-queue-package-summary,
+    .planner-history-summary {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .planner-queue-package-summary::-webkit-details-marker,
+    .planner-history-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .planner-queue-icon {
+      font-size: 25px;
+    }
+
+    .planner-queue-heading {
+      display: flex;
+      flex: 1;
+      min-width: 0;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .planner-queue-heading small {
+      opacity: .7;
+      font-size: 12px;
+    }
+
+    .planner-queue-arrow {
+      margin-left: auto;
+      font-size: 20px;
+      opacity: .7;
+      transition: transform .2s ease;
+    }
+
+    .planner-queue-package[open] > summary .planner-queue-arrow,
+    .planner-history[open] > summary .planner-queue-arrow {
+      transform: rotate(180deg);
+    }
+
+    .planner-queue-package-content {
+      padding: 0 12px 12px;
+    }
+
+    .planner-queue-package-content .planner-slots {
+      margin-top: 0;
+    }
+
     .planner-progress {
       margin-top: 18px;
       padding: 14px;
-      border: 1px solid var(--border-color, #8884);
+      border: 1px solid var(--border-color, #8885);
       border-radius: 14px;
+      background: rgba(128,128,128,.035);
     }
 
     .planner-progress-heading,
@@ -167,7 +311,7 @@ function addStyles() {
       margin: 12px 0;
       overflow: hidden;
       border-radius: 20px;
-      background: var(--border-color, #8884);
+      background: var(--border-color, #8885);
     }
 
     .planner-progress-fill {
@@ -181,11 +325,18 @@ function addStyles() {
       font-size: 12px;
     }
 
-    .planner-history {
-      margin: 24px 0;
-      padding: 16px;
-      border: 1px solid var(--border-color, #8884);
-      border-radius: 16px;
+    .planner-history-summary {
+      justify-content: space-between;
+    }
+
+    .planner-history-count {
+      margin-left: auto;
+      font-size: 12px;
+      opacity: .7;
+    }
+
+    .planner-history-content {
+      padding: 0 16px 12px;
     }
 
     .planner-history-item {
@@ -193,7 +344,7 @@ function addStyles() {
       flex-direction: column;
       gap: 4px;
       padding: 12px 0;
-      border-bottom: 1px solid var(--border-color, #8884);
+      border-bottom: 1px solid var(--border-color, #8885);
     }
 
     .planner-history-item:last-child {
@@ -203,16 +354,27 @@ function addStyles() {
     .planner-history-item small {
       opacity: .7;
     }
+
+    @media (max-width: 520px) {
+      .planner-queue-package-content {
+        padding-left: 8px;
+        padding-right: 8px;
+      }
+    }
   `;
 
   document.head.appendChild(style);
 }
+
+/* ---------- REFRESH ---------- */
 
 function render() {
   if (!window.StudioStore) return;
 
   const settings = getSettings();
   if (!settings.slots) return;
+
+  updateQueuePackage(settings);
 
   SLOT_NAMES.forEach(slotName => {
     const slot = settings.slots[slotName];
@@ -222,7 +384,7 @@ function render() {
   renderHistory(settings);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function init() {
   addStyles();
   render();
 
@@ -233,6 +395,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   window.addEventListener('focus', render);
-});
+  window.addEventListener('pageshow', render);
+}
+
+document.addEventListener('DOMContentLoaded', init);
 
 })();
