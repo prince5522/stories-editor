@@ -82,7 +82,8 @@ function isCompletedToday(item) {
   );
 }
 
-/* Each queue has its own daily completion check. */
+/* ---------- DAILY QUEUE COMPLETION ---------- */
+
 function alreadyCompletedToday(slotName) {
   const fresh = readSettings();
 
@@ -127,7 +128,15 @@ function isSlotDue(slot) {
   return new Date() >= scheduled;
 }
 
-function storyEpisodes(slot) {
+/* ---------- EPISODE COLLECTIONS ---------- */
+
+/*
+  Returns every episode belonging to the selected story.
+
+  Ready-Made episodes are not limited to 13 per season.
+  Their actual uploaded season and episode numbers are used.
+*/
+function allStoryEpisodes(slot) {
   if (slot.type === 'ready') {
     return (get('readyMadeEpisodes', []) || [])
       .filter(ep => {
@@ -137,8 +146,7 @@ function storyEpisodes(slot) {
           'Ready-made episodes';
 
         return String(name).toLowerCase() ===
-          String(slot.storyName || '').toLowerCase() &&
-          String(ep.status || '').toLowerCase() !== 'posted';
+          String(slot.storyName || '').toLowerCase();
       })
       .sort((a, b) =>
         Number(a.season_number || 1) -
@@ -164,6 +172,23 @@ function storyEpisodes(slot) {
     );
 }
 
+/*
+  Returns episodes still available for posting.
+
+  Ready-Made episodes already marked as posted are skipped.
+*/
+function storyEpisodes(slot) {
+  const episodes = allStoryEpisodes(slot);
+
+  if (slot.type === 'ready') {
+    return episodes.filter(ep =>
+      String(ep.status || '').toLowerCase() !== 'posted'
+    );
+  }
+
+  return episodes;
+}
+
 function getPosition(slot) {
   return {
     season: Number(slot.season || 1),
@@ -171,6 +196,13 @@ function getPosition(slot) {
   };
 }
 
+/*
+  Finds the first available episode at or after the
+  configured starting position.
+
+  Episodes before the configured position are skipped.
+  This allows a queue to begin at any uploaded episode.
+*/
 function findNextEpisode(slot) {
   const position = getPosition(slot);
 
@@ -205,6 +237,8 @@ function episodeLabel(ep, type) {
   return `Season ${season} • Episode ${number}`;
 }
 
+/* ---------- EPISODE TEXT ---------- */
+
 function episodeText(ep, type) {
   if (type === 'ready') {
     const storyName =
@@ -235,6 +269,8 @@ function episodeText(ep, type) {
     '❤️ React for more stories! 🔥'
   ].join('\n\n');
 }
+
+/* ---------- WHATSAPP AND CLIPBOARD ---------- */
 
 function openChannel(url) {
   if (!url) {
@@ -279,6 +315,8 @@ async function copyText(text) {
   }
 }
 
+/* ---------- PENDING POST ---------- */
+
 function getPendingEpisode(slotName) {
   const pending = settings.pending;
 
@@ -288,9 +326,14 @@ function getPendingEpisode(slotName) {
 
   if (!slot) return null;
 
-  return storyEpisodes(slot).find(ep =>
+  /*
+    Search the complete collection, not only unpublished episodes.
+    This keeps an in-progress episode recoverable if its posted
+    status was saved before the return flow completed.
+  */
+  return allStoryEpisodes(slot).find(ep =>
     String(ep.id) === String(pending.episodeId)
-  );
+  ) || null;
 }
 
 function setPending(slotName, stage, ep) {
@@ -309,6 +352,8 @@ function setPending(slotName, stage, ep) {
 
   saveSettings();
 }
+
+/* ---------- ADVERTISEMENT STAGE ---------- */
 
 async function startAdvertisement(slotName) {
   settings = readSettings();
@@ -382,6 +427,8 @@ async function startAdvertisement(slotName) {
   );
 }
 
+/* ---------- EPISODE STAGE ---------- */
+
 async function prepareEpisode(slotName) {
   settings = readSettings();
 
@@ -430,6 +477,8 @@ async function prepareEpisode(slotName) {
   );
 }
 
+/* ---------- QUEUE POSITION ---------- */
+
 function advancePosition(slot, ep) {
   const season = Number(
     slot.type === 'ready'
@@ -443,6 +492,46 @@ function advancePosition(slot, ep) {
       : ep.episodeNumber || 1
   );
 
+  if (slot.type === 'ready') {
+    /*
+      Ready-Made stories have no fixed 13-episode limit.
+
+      Find the next real uploaded episode in the same story.
+      This also handles gaps in episode numbers and transitions
+      between seasons using the actual uploaded metadata.
+    */
+    const all = allStoryEpisodes(slot);
+
+    const currentIndex = all.findIndex(item =>
+      String(item.id) === String(ep.id)
+    );
+
+    const next = currentIndex >= 0
+      ? all.slice(currentIndex + 1).find(item =>
+          String(item.status || '').toLowerCase() !== 'posted'
+        )
+      : null;
+
+    if (next) {
+      slot.season = Number(next.season_number || 1);
+      slot.episode = Number(next.episode_number || 1);
+    } else {
+      /*
+        No later episode is currently uploaded.
+        Keep the pointer after the last posted episode so
+        newly uploaded episodes can be found later.
+      */
+      slot.season = season;
+      slot.episode = episode + 1;
+    }
+
+    return;
+  }
+
+  /*
+    Preserve the existing Serial-story progression.
+    This Ready-Made repair does not change the Serial rule.
+  */
   if (episode >= 13) {
     slot.season = season + 1;
     slot.episode = 1;
@@ -451,6 +540,8 @@ function advancePosition(slot, ep) {
     slot.episode = episode + 1;
   }
 }
+
+/* ---------- READY-MADE POSTING STATUS ---------- */
 
 function markReadyMadePosted(ep) {
   const all = get('readyMadeEpisodes', []);
@@ -466,6 +557,8 @@ function markReadyMadePosted(ep) {
 
   save('readyMadeEpisodes', all);
 }
+
+/* ---------- COMPLETE POSTING ---------- */
 
 function completeEpisodeOnReturn(slotName) {
   const pending = settings.pending;
@@ -514,6 +607,10 @@ function completeEpisodeOnReturn(slotName) {
   settings.slotRuns = settings.slotRuns || {};
   settings.slotRuns[slotName] = todayKey();
 
+  /*
+    Save the Ready-Made posted status before advancing the queue.
+    The episode remains recoverable through allStoryEpisodes().
+  */
   if (slot.type === 'ready') {
     markReadyMadePosted(ep);
   }
@@ -534,6 +631,8 @@ function completeEpisodeOnReturn(slotName) {
 
   return true;
 }
+
+/* ---------- RETURN FLOW ---------- */
 
 function advanceAfterReturn() {
   const pending = settings.pending;
@@ -561,7 +660,7 @@ function advanceAfterReturn() {
   }
 }
 
-/* ---------- RECOVERY ---------- */
+/* ---------- RECOVERY PANEL ---------- */
 
 function ensureRecoveryPanel() {
   let panel = $('plannerPendingRecovery');
@@ -672,7 +771,7 @@ function cancelPending(slotName) {
   cancelAnyPending();
 }
 
-/* ---------- RETURN DETECTION ---------- */
+/* ---------- WHATSAPP RETURN DETECTION ---------- */
 
 function handleReturnFromWhatsApp() {
   if (returnCheckLock || document.hidden) return;
@@ -709,7 +808,7 @@ function handleReturnFromWhatsApp() {
   }, 500);
 }
 
-/* ---------- SLOT CONTROLS ---------- */
+/* ---------- POSTING CONTROLS ---------- */
 
 function renderCompletedSlot(controls, slotName, slot) {
   const labels = {
@@ -761,7 +860,6 @@ function renderPostingControls() {
     const isPending =
       pending && pending.slot === slotName;
 
-    /* Refresh and check this specific queue. */
     if (!isPending && alreadyCompletedToday(slotName)) {
       renderCompletedSlot(
         controls,
@@ -945,6 +1043,10 @@ function bindEvents() {
 
   window.addEventListener('pageshow', () => {
     settings = readSettings();
+
+    // Recover a posting sequence if the app was reopened
+    // after returning from WhatsApp.
+    handleReturnFromWhatsApp();
     renderPostingControls();
   });
 
