@@ -1,4 +1,3 @@
-
 (function () {
 'use strict';
 
@@ -233,13 +232,16 @@ function ensureProgressSection() {
   section.className = 'section-block panel';
 
   section.innerHTML = `
-    <p class="eyebrow">POSTING TRACKER</p>
-    <h2>Story progress</h2>
-    <p class="small muted">
-      Track completed and remaining episodes in each queue.
-    </p>
-
-    <div id="plannerProgressCards" class="stack-list"></div>
+    <details class="planner-folder" id="postingProgressFolder">
+      <summary>
+        <span>📊 Posting Progress</span>
+        <span class="small muted">Morning · Lunch · Evening</span>
+      </summary>
+      <div class="planner-folder-content">
+        <p class="small muted">Track completed and remaining episodes in each queue.</p>
+        <div id="plannerProgressCards" class="stack-list"></div>
+      </div>
+    </details>
   `;
 
   const setup = $('plannerSetupStatus');
@@ -267,16 +269,20 @@ function renderProgressCard(slotName) {
 
   if (!progress.configured) {
     return `
-      <article class="list-item">
-        <div class="section-heading">
-          <h3>${label}</h3>
-          <span class="pill">Not configured</span>
+      <details class="planner-folder planner-queue-folder" id="${slotName}ProgressFolder">
+        <summary>${label} Progress</summary>
+        <div class="planner-folder-content">
+          <article class="list-item">
+            <div class="section-heading">
+              <h3>${label}</h3>
+              <span class="pill">Not configured</span>
+            </div>
+            <p class="small muted">
+              Choose a story and save this queue to track progress.
+            </p>
+          </article>
         </div>
-
-        <p class="small muted">
-          Choose a story and save this queue to track progress.
-        </p>
-      </article>
+      </details>
     `;
   }
 
@@ -293,9 +299,12 @@ function renderProgressCard(slotName) {
     : 'Serial story';
 
   return `
-    <article class="list-item">
-      <div class="section-heading">
-        <h3>${label}</h3>
+    <details class="planner-folder planner-queue-folder" id="${slotName}ProgressFolder">
+      <summary>${label} Progress</summary>
+      <div class="planner-folder-content">
+        <article class="list-item">
+          <div class="section-heading">
+            <h3>${label}</h3>
         <span class="pill">${percent}%</span>
       </div>
 
@@ -345,20 +354,32 @@ function renderProgressCard(slotName) {
         Total episodes: ${progress.total}
       </p>
 
-      <p class="small muted">
-        ${escapeHTML(status)}
-      </p>
-    </article>
+          <p class="small muted">
+            ${escapeHTML(status)}
+          </p>
+        </article>
+      </div>
+    </details>
   `;
 }
 
 function renderProgress() {
-  const section = ensureProgressSection();
+  ensureProgressSection();
   const target = $('plannerProgressCards');
 
   if (!target) return;
 
+  // Keep each queue folder open or closed during automatic refreshes.
+  const openFolders = new Set(
+    [...target.querySelectorAll('details[open]')].map(folder => folder.id)
+  );
+
   target.innerHTML = SLOT_NAMES.map(renderProgressCard).join('');
+
+  openFolders.forEach(id => {
+    const folder = $(id);
+    if (folder) folder.open = true;
+  });
 }
 
 /* =========================================
@@ -481,14 +502,16 @@ function ensureHistorySection() {
   section.className = 'section-block panel';
 
   section.innerHTML = `
-    <p class="eyebrow">POSTING RECORDS</p>
-    <h2>Posting history</h2>
-
-    <p class="small muted">
-      Your recorded posting activity across all three queues.
-    </p>
-
-    <div id="plannerHistoryList" class="stack-list"></div>
+    <details class="planner-folder" id="postingHistoryFolder">
+      <summary>
+        <span>🗂️ Posting History</span>
+        <span class="small muted">All recorded posts</span>
+      </summary>
+      <div class="planner-folder-content">
+        <p class="small muted">Your recorded posting activity across all three queues.</p>
+        <div id="plannerHistoryList" class="stack-list"></div>
+      </div>
+    </details>
   `;
 
   const progress = $('plannerProgressSection');
