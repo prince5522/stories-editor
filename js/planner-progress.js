@@ -4,6 +4,7 @@
 
 const KEY = 'storySlotPlannerV1';
 const $ = id => document.getElementById(id);
+
 const SLOT_NAMES = ['morning', 'lunch', 'evening'];
 
 const SLOT_LABELS = {
@@ -12,19 +13,19 @@ const SLOT_LABELS = {
   evening: '🌙 Evening'
 };
 
-let settings = {};
 let refreshTimer = null;
+let settings = {};
 
-function store() {
-  return window.StudioStore;
-}
+/* =========================================
+   STORAGE
+========================================= */
 
 function read(key, fallback) {
   try {
-    if (!store()) return fallback;
-    return store().get(key, fallback);
+    if (!window.StudioStore) return fallback;
+    return window.StudioStore.get(key, fallback);
   } catch (error) {
-    console.warn('Progress storage error:', error);
+    console.warn('Planner progress read error:', error);
     return fallback;
   }
 }
@@ -45,28 +46,31 @@ function escapeHTML(value) {
 }
 
 function normalName(value) {
-  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
 }
 
+/* =========================================
+   EPISODES
+========================================= */
+
 function uniqueById(items) {
-  const found = new Map();
+  const map = new Map();
 
   items.forEach((item, index) => {
     if (!item) return;
 
-    const id = item.id != null
+    const key = item.id != null
       ? String(item.id)
-      : `no-id-${index}`;
+      : `episode-${index}`;
 
-    found.set(id, item);
+    map.set(key, item);
   });
 
-  return [...found.values()];
+  return [...map.values()];
 }
-
-/* =========================================
-   EPISODE COLLECTIONS
-========================================= */
 
 function getEpisodes(slot) {
   if (!slot || !slot.storyName) return [];
@@ -110,37 +114,26 @@ function getEpisodes(slot) {
 }
 
 /* =========================================
-   COMPLETION RECORDS
+   COMPLETION
 ========================================= */
 
 function getCompletedRecords(slotName) {
   const records = settings.completed?.[slotName];
+
   return Array.isArray(records) ? records : [];
 }
 
-function getEpisodeId(ep) {
-  return ep && ep.id != null ? String(ep.id) : '';
-}
-
 function getCompletionIds(slotName) {
-  const ids = new Set();
-
-  getCompletedRecords(slotName).forEach(record => {
-    if (record.episodeId != null) {
-      ids.add(String(record.episodeId));
-    }
-  });
-
-  return ids;
+  return new Set(
+    getCompletedRecords(slotName)
+      .filter(record => record && record.episodeId != null)
+      .map(record => String(record.episodeId))
+  );
 }
 
 function isReadyPosted(ep) {
   return String(ep.status || '').toLowerCase() === 'posted';
 }
-
-/* =========================================
-   PROGRESS CALCULATION
-========================================= */
 
 function calculateProgress(slotName) {
   const slot = settings.slots?.[slotName];
@@ -157,46 +150,60 @@ function calculateProgress(slotName) {
   }
 
   const episodes = getEpisodes(slot);
-  const completionIds = getCompletionIds(slotName);
-  const completedIds = new Set();
+  const completedIds = getCompletionIds(slotName);
+  const completed = episodes.filter(ep => {
+    if (ep.id == null) return false;
 
-  episodes.forEach(ep => {
-    const id = getEpisodeId(ep);
-    if (!id) return;
+    const id = String(ep.id);
 
-    if (slot.type === 'ready' && isReadyPosted(ep)) {
-      completedIds.add(id);
-    }
-
-    if (completionIds.has(id)) {
-      completedIds.add(id);
-    }
-  });
+    return completedIds.has(id) ||
+      (slot.type === 'ready' && isReadyPosted(ep));
+  }).length;
 
   const total = episodes.length;
-  const completed = Math.min(total, completedIds.size);
   const remaining = Math.max(0, total - completed);
-  const percentage = total
-    ? Math.round((completed / total) * 100)
-    : 0;
 
   return {
     configured: true,
     total,
     completed,
     remaining,
-    percentage,
-    episodes,
-    completedIds
+    percentage: total
+      ? Math.round((completed / total) * 100)
+      : 0,
+    episodes
   };
 }
 
 /* =========================================
-   PROGRESS FOLDER
+   PRESERVE FOLDER OPEN/CLOSED STATES
+========================================= */
+
+function rememberOpenStates(container) {
+  const states = {};
+
+  container.querySelectorAll('details[id]').forEach(folder => {
+    states[folder.id] = folder.open;
+  });
+
+  return states;
+}
+
+function restoreOpenStates(container, states) {
+  container.querySelectorAll('details[id]').forEach(folder => {
+    if (Object.prototype.hasOwnProperty.call(states, folder.id)) {
+      folder.open = states[folder.id];
+    }
+  });
+}
+
+/* =========================================
+   PROGRESS SECTION
 ========================================= */
 
 function ensureProgressSection() {
   let section = $('plannerProgressSection');
+
   if (section) return section;
 
   section = document.createElement('section');
@@ -204,49 +211,57 @@ function ensureProgressSection() {
   section.className = 'section-block panel planner-progress';
 
   section.innerHTML = `
-    <details class="planner-folder" id="postingProgressFolder" open>
+    <details class="planner-folder" id="postingProgressFolder">
       <summary class="planner-folder-summary">
         <span>
-          <span class="planner-folder-title">📁 Posting Progress</span>
+          <span class="planner-folder-title">
+            📁 Posting Progress
+          </span>
           <span class="planner-folder-hint">
-            Separate progress for each daily queue
+            Independent progress for each daily queue
           </span>
         </span>
-        <span class="pill">3 trackers</span>
+        <span class="pill">3 queues</span>
       </summary>
 
       <div class="planner-folder-content">
-        <div id="plannerProgressCards" class="stack-list"></div>
+        <div id="plannerProgressCards"></div>
       </div>
     </details>
   `;
 
   const setup = $('plannerSetupStatus');
+  const main = document.querySelector('main');
 
   if (setup?.closest('.section-block')) {
     setup.closest('.section-block').after(section);
-  } else {
-    document.querySelector('main')?.appendChild(section);
+  } else if (main) {
+    main.appendChild(section);
   }
 
   return section;
 }
 
 function renderProgressCard(slotName) {
-  const slot = settings.slots?.[slotName];
   const progress = calculateProgress(slotName);
+  const slot = settings.slots?.[slotName];
+
   const label = SLOT_LABELS[slotName];
 
   if (!progress.configured) {
     return `
-      <details class="planner-progress-queue" id="${slotName}ProgressFolder">
+      <details
+        class="planner-progress-queue"
+        id="${slotName}ProgressFolder"
+      >
         <summary>
           <span>${label}</span>
           <span class="pill">Not configured</span>
         </summary>
+
         <div class="planner-progress-body">
           <p class="small muted">
-            Choose a story and save this queue to track its progress.
+            Choose a story and save this queue to start tracking progress.
           </p>
         </div>
       </details>
@@ -256,17 +271,16 @@ function renderProgressCard(slotName) {
   const percent = progress.percentage;
 
   const status = progress.total === 0
-    ? 'No episodes uploaded'
+    ? 'No episodes uploaded for this story yet.'
     : progress.remaining === 0
-      ? 'All available episodes completed'
-      : `${progress.remaining} episodes remaining`;
-
-  const type = slot.type === 'ready'
-    ? 'Ready-Made'
-    : 'Serial story';
+      ? 'All available episodes completed.'
+      : `${progress.remaining} episodes remaining.`;
 
   return `
-    <details class="planner-progress-queue" id="${slotName}ProgressFolder">
+    <details
+      class="planner-progress-queue"
+      id="${slotName}ProgressFolder"
+    >
       <summary>
         <span>${label}</span>
         <span class="pill">${percent}% complete</span>
@@ -275,21 +289,23 @@ function renderProgressCard(slotName) {
       <div class="planner-progress-body">
         <h3>${escapeHTML(slot.storyName)}</h3>
 
-        <p class="small muted">${type}</p>
+        <p class="small muted">
+          ${slot.type === 'ready' ? 'Ready-Made story' : 'Serial story'}
+        </p>
 
         <div
           role="progressbar"
-          aria-label="${escapeHTML(slot.storyName)} progress"
+          aria-label="Posting progress"
           aria-valuemin="0"
           aria-valuemax="100"
           aria-valuenow="${percent}"
           style="
             width:100%;
             height:11px;
-            overflow:hidden;
             border-radius:20px;
+            overflow:hidden;
             background:var(--surface-2,rgba(127,127,127,.18));
-            margin:13px 0;
+            margin:14px 0;
           "
         >
           <div style="
@@ -305,6 +321,7 @@ function renderProgressCard(slotName) {
           <span class="small">
             ✅ Completed: <strong>${progress.completed}</strong>
           </span>
+
           <span class="small">
             ⏳ Remaining: <strong>${progress.remaining}</strong>
           </span>
@@ -326,9 +343,17 @@ function renderProgress() {
   const target = $('plannerProgressCards');
   if (!target) return;
 
-  target.innerHTML = SLOT_NAMES
+  const states = rememberOpenStates(target);
+
+  const html = SLOT_NAMES
     .map(renderProgressCard)
     .join('');
+
+  /* Avoid unnecessary DOM replacement */
+  if (target.innerHTML !== html) {
+    target.innerHTML = html;
+    restoreOpenStates(target, states);
+  }
 }
 
 /* =========================================
@@ -339,12 +364,13 @@ function getHistoryEntries() {
   const entries = [];
 
   SLOT_NAMES.forEach(slotName => {
-    getCompletedRecords(slotName).forEach(record => {
+    getCompletedRecords(slotName).forEach((record, index) => {
       if (!record) return;
 
       entries.push({
         ...record,
-        slotName
+        slotName,
+        _fallbackIndex: index
       });
     });
   });
@@ -356,32 +382,39 @@ function getHistoryEntries() {
       ? String(entry.episodeId)
       : '';
 
+    const date = entry.completedAt ||
+      entry.date ||
+      entry.timestamp ||
+      '';
+
     const key = episodeId
       ? `${entry.slotName}:${episodeId}`
-      : `${entry.slotName}:${entry.completedAt || entry.date || entry.label || Math.random()}`;
+      : `${entry.slotName}:${date}:${entry.label || entry.title || entry._fallbackIndex}`;
 
     const old = unique.get(key);
 
-    const currentTime = new Date(
-      entry.completedAt || entry.date || 0
+    if (!old) {
+      unique.set(key, entry);
+      return;
+    }
+
+    const currentTime = new Date(date || 0).getTime();
+    const oldTime = new Date(
+      old.completedAt || old.date || old.timestamp || 0
     ).getTime();
 
-    const oldTime = old
-      ? new Date(old.completedAt || old.date || 0).getTime()
-      : -1;
-
-    if (!old || currentTime >= oldTime) {
+    if (currentTime >= oldTime) {
       unique.set(key, entry);
     }
   });
 
   return [...unique.values()].sort((a, b) => {
     const dateA = new Date(
-      a.completedAt || a.date || 0
+      a.completedAt || a.date || a.timestamp || 0
     ).getTime();
 
     const dateB = new Date(
-      b.completedAt || b.date || 0
+      b.completedAt || b.date || b.timestamp || 0
     ).getTime();
 
     return dateB - dateA;
@@ -401,15 +434,14 @@ function formatDate(value) {
 }
 
 function renderHistoryEntry(entry) {
-  const label = SLOT_LABELS[entry.slotName] ||
+  const slotLabel = SLOT_LABELS[entry.slotName] ||
     entry.slotName;
 
   const title = entry.title ||
     settings.slots?.[entry.slotName]?.storyName ||
     'Story episode';
 
-  const episode = entry.label ||
-    'Episode completed';
+  const episode = entry.label || 'Episode completed';
 
   const date = formatDate(
     entry.completedAt ||
@@ -421,7 +453,7 @@ function renderHistoryEntry(entry) {
     <article class="list-item">
       <div class="section-heading">
         <strong>${escapeHTML(title)}</strong>
-        <span class="pill">${escapeHTML(label)}</span>
+        <span class="pill">${escapeHTML(slotLabel)}</span>
       </div>
 
       <p class="small">✅ ${escapeHTML(episode)}</p>
@@ -433,6 +465,7 @@ function renderHistoryEntry(entry) {
 
 function ensureHistorySection() {
   let section = $('plannerHistorySection');
+
   if (section) return section;
 
   section = document.createElement('section');
@@ -443,16 +476,18 @@ function ensureHistorySection() {
     <details class="planner-folder" id="postingHistoryFolder">
       <summary class="planner-folder-summary">
         <span>
-          <span class="planner-folder-title">📁 Posting History</span>
+          <span class="planner-folder-title">
+            📁 Posting History
+          </span>
           <span class="planner-folder-hint">
-            Records from Morning, Lunch and Evening
+            Completed posts from all three queues
           </span>
         </span>
         <span class="pill">History</span>
       </summary>
 
       <div class="planner-folder-content">
-        <div id="plannerHistoryList" class="stack-list"></div>
+        <div id="plannerHistoryList"></div>
       </div>
     </details>
   `;
@@ -476,23 +511,20 @@ function renderHistory() {
 
   const entries = getHistoryEntries();
 
-  if (!entries.length) {
-    target.innerHTML = `
+  const html = entries.length
+    ? entries.slice(0, 100).map(renderHistoryEntry).join('')
+    : `
       <div class="planner-empty">
         <p>No completed posts recorded yet.</p>
         <p class="small muted">
-          Posting records will appear here when the Planner
-          records completed episodes.
+          Completed posting records will appear here.
         </p>
       </div>
     `;
-    return;
-  }
 
-  target.innerHTML = entries
-    .slice(0, 100)
-    .map(renderHistoryEntry)
-    .join('');
+  if (target.innerHTML !== html) {
+    target.innerHTML = html;
+  }
 }
 
 /* =========================================
@@ -511,13 +543,13 @@ function render() {
 
 function scheduleRefresh() {
   if (refreshTimer) {
-    window.clearTimeout(refreshTimer);
+    clearTimeout(refreshTimer);
   }
 
-  refreshTimer = window.setTimeout(() => {
+  refreshTimer = setTimeout(() => {
     refreshTimer = null;
     render();
-  }, 100);
+  }, 150);
 }
 
 /* =========================================
@@ -539,11 +571,11 @@ function bindEvents() {
   window.addEventListener('storage', scheduleRefresh);
 
   document.addEventListener('click', event => {
-    const button = event.target.closest(
+    if (event.target.closest(
       '#saveAllPlannerSlots, #savePlannerSettings'
-    );
-
-    if (button) scheduleRefresh();
+    )) {
+      scheduleRefresh();
+    }
   });
 }
 
@@ -552,8 +584,8 @@ function bindEvents() {
 ========================================= */
 
 function init() {
-  if (!store()) {
-    console.warn('Planner progress waiting for StudioStore.');
+  if (!window.StudioStore) {
+    console.warn('Planner progress: StudioStore unavailable.');
     return;
   }
 
@@ -564,9 +596,15 @@ function init() {
     if (!document.hidden) render();
   }, 15000);
 
-  console.log('Planner folders, progress and history loaded.');
+  console.log(
+    'Planner progress and history folders initialized.'
+  );
 }
 
-document.addEventListener('DOMContentLoaded', init);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
 
 })();
