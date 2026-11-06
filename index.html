@@ -393,10 +393,10 @@
     (() => {
       'use strict';
 
+      const SELECTOR = 'body.welcome-page .welcome-shell';
+
       function removeDuplicateWelcomeCards() {
-        const cards = document.querySelectorAll(
-          'body.welcome-page > .welcome-shell'
-        );
+        const cards = document.querySelectorAll(SELECTOR);
 
         cards.forEach((card, index) => {
           if (index > 0) {
@@ -405,16 +405,17 @@
         });
       }
 
-      // Clean up duplicates already present.
+      // Run after the initial HTML has loaded.
       removeDuplicateWelcomeCards();
 
-      // Protect against another script inserting a duplicate later.
+      // Watch nested elements and later script insertions too.
       const observer = new MutationObserver(() => {
         removeDuplicateWelcomeCards();
       });
 
       observer.observe(document.body, {
-        childList: true
+        childList: true,
+        subtree: true
       });
     })();
   </script>
