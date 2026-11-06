@@ -1,11 +1,11 @@
 
 /* =========================================
-   CHANNEL STUDIO v22
+   CHANNEL STUDIO v23
    COMPLETE OFFLINE CACHE
-   Login + all existing pages and files
+   Welcome page refresh + Login support
 ========================================= */
 
-const CACHE = 'channel-studio-shell-v22';
+const CACHE = 'channel-studio-shell-v23';
 const CACHE_PREFIX = 'channel-studio-shell-';
 const FETCH_TIMEOUT = 6000;
 
@@ -173,7 +173,7 @@ self.addEventListener('install', event => {
     await self.skipWaiting();
 
     console.log(
-      '[Channel Studio] v22 installed'
+      '[Channel Studio] v23 installed'
     );
   })());
 });
@@ -198,7 +198,7 @@ self.addEventListener('activate', event => {
     await self.clients.claim();
 
     console.log(
-      '[Channel Studio] v22 activated'
+      '[Channel Studio] v23 activated'
     );
   })());
 });
