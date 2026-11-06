@@ -1,11 +1,11 @@
 
 /* =========================================
-   CHANNEL STUDIO v21
+   CHANNEL STUDIO v22
    COMPLETE OFFLINE CACHE
-   All existing pages + CSS + JavaScript
+   Login + all existing pages and files
 ========================================= */
 
-const CACHE = 'channel-studio-shell-v21';
+const CACHE = 'channel-studio-shell-v22';
 const CACHE_PREFIX = 'channel-studio-shell-';
 const FETCH_TIMEOUT = 6000;
 
@@ -13,6 +13,7 @@ const FETCH_TIMEOUT = 6000;
 const PAGES = [
   './',
   'index.html',
+  'login.html',
   'home.html',
   'stories.html',
   'episodes.html',
@@ -64,6 +65,7 @@ const SCRIPTS = [
   'js/planner-stage4.js',
   'js/ready-made.js',
   'js/supabase-cloud.js',
+  'js/auth.js',
   'js/whatsapp-shell.js',
   'js/wallpaper.js',
   'js/story-runway-alerts.js'
@@ -86,6 +88,7 @@ const CORE = [
 /* Fetch with timeout */
 async function fetchWithTimeout(url) {
   const controller = new AbortController();
+
   const timer = setTimeout(
     () => controller.abort(),
     FETCH_TIMEOUT
@@ -170,7 +173,7 @@ self.addEventListener('install', event => {
     await self.skipWaiting();
 
     console.log(
-      '[Channel Studio] v21 installed'
+      '[Channel Studio] v22 installed'
     );
   })());
 });
@@ -195,7 +198,7 @@ self.addEventListener('activate', event => {
     await self.clients.claim();
 
     console.log(
-      '[Channel Studio] v21 activated'
+      '[Channel Studio] v22 activated'
     );
   })());
 });
