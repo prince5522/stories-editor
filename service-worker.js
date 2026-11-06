@@ -2,14 +2,13 @@
 /* =========================================
    CHANNEL STUDIO v24
    COMPLETE OFFLINE CACHE
-   Welcome page refresh + Login support
+   Planner folders + login support
 ========================================= */
 
 const CACHE = 'channel-studio-shell-v24';
 const CACHE_PREFIX = 'channel-studio-shell-';
 const FETCH_TIMEOUT = 6000;
 
-/* Every existing HTML page */
 const PAGES = [
   './',
   'index.html',
@@ -32,7 +31,6 @@ const PAGES = [
   'accounts.html'
 ];
 
-/* Existing stylesheets */
 const STYLES = [
   'css/styles.css',
   'css/animations.css',
@@ -41,7 +39,6 @@ const STYLES = [
   'css/ready-made.css'
 ];
 
-/* Existing JavaScript files */
 const SCRIPTS = [
   'js/app-shell-behavior.js',
   'js/storage.js',
@@ -71,7 +68,6 @@ const SCRIPTS = [
   'js/story-runway-alerts.js'
 ];
 
-/* App manifest and icons */
 const OTHER_FILES = [
   'manifest.webmanifest',
   'assets/icons/icon-192.png',
@@ -85,7 +81,6 @@ const CORE = [
   ...OTHER_FILES
 ];
 
-/* Fetch with timeout */
 async function fetchWithTimeout(url) {
   const controller = new AbortController();
 
@@ -162,7 +157,6 @@ self.addEventListener('install', event => {
           await cache.put(url.href, response);
         }
       } catch (error) {
-        /* Keep the old cached copy when offline */
         console.warn(
           '[Channel Studio] Keeping cached file:',
           path
@@ -172,9 +166,7 @@ self.addEventListener('install', event => {
 
     await self.skipWaiting();
 
-    console.log(
-      '[Channel Studio] v23 installed'
-    );
+    console.log('[Channel Studio] v24 installed');
   })());
 });
 
@@ -197,9 +189,7 @@ self.addEventListener('activate', event => {
 
     await self.clients.claim();
 
-    console.log(
-      '[Channel Studio] v23 activated'
-    );
+    console.log('[Channel Studio] v24 activated');
   })());
 });
 
@@ -269,17 +259,14 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(request.url);
 
-  /* Do not intercept external services */
   if (url.origin !== self.location.origin) return;
 
-  /* Do not interfere with partial media requests */
   if (request.headers.has('range')) return;
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
 
     try {
-      /* Return cached content immediately */
       const cached = await cache.match(
         request,
         { ignoreSearch: true }
@@ -287,7 +274,6 @@ self.addEventListener('fetch', event => {
 
       if (cached) return cached;
 
-      /* Fetch resources not yet cached */
       const response = await fetch(request);
 
       if (response && response.ok) {
