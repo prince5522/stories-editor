@@ -4,7 +4,6 @@
 
 const KEY = 'storySlotPlannerV1';
 const $ = id => document.getElementById(id);
-
 const SLOT_NAMES = ['morning', 'lunch', 'evening'];
 
 const SLOT_LABELS = {
@@ -16,10 +15,6 @@ const SLOT_LABELS = {
 let settings = {};
 let refreshTimer = null;
 
-/* =========================================
-   STORAGE
-========================================= */
-
 function store() {
   return window.StudioStore;
 }
@@ -29,7 +24,7 @@ function read(key, fallback) {
     if (!store()) return fallback;
     return store().get(key, fallback);
   } catch (error) {
-    console.warn('Progress could not read storage:', error);
+    console.warn('Progress storage error:', error);
     return fallback;
   }
 }
@@ -50,18 +45,20 @@ function escapeHTML(value) {
 }
 
 function normalName(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function uniqueById(items) {
   const found = new Map();
 
-  items.forEach(item => {
-    if (!item || item.id == null) return;
-    found.set(String(item.id), item);
+  items.forEach((item, index) => {
+    if (!item) return;
+
+    const id = item.id != null
+      ? String(item.id)
+      : `no-id-${index}`;
+
+    found.set(id, item);
   });
 
   return [...found.values()];
@@ -118,7 +115,6 @@ function getEpisodes(slot) {
 
 function getCompletedRecords(slotName) {
   const records = settings.completed?.[slotName];
-
   return Array.isArray(records) ? records : [];
 }
 
@@ -138,11 +134,6 @@ function getCompletionIds(slotName) {
   return ids;
 }
 
-/*
- * Ready-Made posted status is authoritative too.
- * This also includes episodes skipped before a selected
- * starting position.
- */
 function isReadyPosted(ep) {
   return String(ep.status || '').toLowerCase() === 'posted';
 }
@@ -167,12 +158,10 @@ function calculateProgress(slotName) {
 
   const episodes = getEpisodes(slot);
   const completionIds = getCompletionIds(slotName);
-
   const completedIds = new Set();
 
   episodes.forEach(ep => {
     const id = getEpisodeId(ep);
-
     if (!id) return;
 
     if (slot.type === 'ready' && isReadyPosted(ep)) {
@@ -187,7 +176,6 @@ function calculateProgress(slotName) {
   const total = episodes.length;
   const completed = Math.min(total, completedIds.size);
   const remaining = Math.max(0, total - completed);
-
   const percentage = total
     ? Math.round((completed / total) * 100)
     : 0;
@@ -204,42 +192,33 @@ function calculateProgress(slotName) {
 }
 
 /* =========================================
-   EPISODE LABELS
-========================================= */
-
-function episodeLabel(ep, type) {
-  const season = type === 'ready'
-    ? ep.season_number || 1
-    : ep.seasonNumber || 1;
-
-  const episode = type === 'ready'
-    ? ep.episode_number || 1
-    : ep.episodeNumber || 1;
-
-  return `S${season} • E${episode}`;
-}
-
-/* =========================================
-   QUEUE PROGRESS DISPLAY
+   PROGRESS FOLDER
 ========================================= */
 
 function ensureProgressSection() {
   let section = $('plannerProgressSection');
-
   if (section) return section;
 
   section = document.createElement('section');
   section.id = 'plannerProgressSection';
-  section.className = 'section-block panel';
+  section.className = 'section-block panel planner-progress';
 
   section.innerHTML = `
-    <p class="eyebrow">POSTING TRACKER</p>
-    <h2>Story progress</h2>
-    <p class="small muted">
-      Track completed and remaining episodes in each queue.
-    </p>
+    <details class="planner-folder" id="postingProgressFolder" open>
+      <summary class="planner-folder-summary">
+        <span>
+          <span class="planner-folder-title">📁 Posting Progress</span>
+          <span class="planner-folder-hint">
+            Separate progress for each daily queue
+          </span>
+        </span>
+        <span class="pill">3 trackers</span>
+      </summary>
 
-    <div id="plannerProgressCards" class="stack-list"></div>
+      <div class="planner-folder-content">
+        <div id="plannerProgressCards" class="stack-list"></div>
+      </div>
+    </details>
   `;
 
   const setup = $('plannerSetupStatus');
@@ -247,13 +226,7 @@ function ensureProgressSection() {
   if (setup?.closest('.section-block')) {
     setup.closest('.section-block').after(section);
   } else {
-    const main = document.querySelector('main');
-
-    if (main) {
-      main.appendChild(section);
-    } else {
-      document.body.appendChild(section);
-    }
+    document.querySelector('main')?.appendChild(section);
   }
 
   return section;
@@ -262,21 +235,21 @@ function ensureProgressSection() {
 function renderProgressCard(slotName) {
   const slot = settings.slots?.[slotName];
   const progress = calculateProgress(slotName);
-
   const label = SLOT_LABELS[slotName];
 
   if (!progress.configured) {
     return `
-      <article class="list-item">
-        <div class="section-heading">
-          <h3>${label}</h3>
+      <details class="planner-progress-queue" id="${slotName}ProgressFolder">
+        <summary>
+          <span>${label}</span>
           <span class="pill">Not configured</span>
+        </summary>
+        <div class="planner-progress-body">
+          <p class="small muted">
+            Choose a story and save this queue to track its progress.
+          </p>
         </div>
-
-        <p class="small muted">
-          Choose a story and save this queue to track progress.
-        </p>
-      </article>
+      </details>
     `;
   }
 
@@ -288,77 +261,74 @@ function renderProgressCard(slotName) {
       ? 'All available episodes completed'
       : `${progress.remaining} episodes remaining`;
 
-  const progressType = slot.type === 'ready'
+  const type = slot.type === 'ready'
     ? 'Ready-Made'
     : 'Serial story';
 
   return `
-    <article class="list-item">
-      <div class="section-heading">
-        <h3>${label}</h3>
-        <span class="pill">${percent}%</span>
+    <details class="planner-progress-queue" id="${slotName}ProgressFolder">
+      <summary>
+        <span>${label}</span>
+        <span class="pill">${percent}% complete</span>
+      </summary>
+
+      <div class="planner-progress-body">
+        <h3>${escapeHTML(slot.storyName)}</h3>
+
+        <p class="small muted">${type}</p>
+
+        <div
+          role="progressbar"
+          aria-label="${escapeHTML(slot.storyName)} progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="${percent}"
+          style="
+            width:100%;
+            height:11px;
+            overflow:hidden;
+            border-radius:20px;
+            background:var(--surface-2,rgba(127,127,127,.18));
+            margin:13px 0;
+          "
+        >
+          <div style="
+            width:${percent}%;
+            height:100%;
+            border-radius:20px;
+            background:var(--accent,var(--primary,#16a34a));
+            transition:width .3s ease;
+          "></div>
+        </div>
+
+        <div class="section-heading">
+          <span class="small">
+            ✅ Completed: <strong>${progress.completed}</strong>
+          </span>
+          <span class="small">
+            ⏳ Remaining: <strong>${progress.remaining}</strong>
+          </span>
+        </div>
+
+        <p class="small muted">
+          Total episodes: ${progress.total}
+        </p>
+
+        <p class="small muted">${escapeHTML(status)}</p>
       </div>
-
-      <p class="small muted">
-        ${escapeHTML(slot.storyName)}
-      </p>
-
-      <p class="small muted">
-        ${progressType}
-      </p>
-
-      <div
-        role="progressbar"
-        aria-label="${escapeHTML(slot.storyName)} progress"
-        aria-valuemin="0"
-        aria-valuemax="100"
-        aria-valuenow="${percent}"
-        style="
-          width:100%;
-          height:10px;
-          overflow:hidden;
-          border-radius:20px;
-          background:var(--surface-2,rgba(127,127,127,.18));
-          margin:12px 0;
-        "
-      >
-        <div style="
-          width:${percent}%;
-          height:100%;
-          border-radius:20px;
-          background:var(--accent,var(--primary,#16a34a));
-          transition:width .3s ease;
-        "></div>
-      </div>
-
-      <div class="section-heading">
-        <span class="small">
-          ✅ Completed: <strong>${progress.completed}</strong>
-        </span>
-
-        <span class="small">
-          ⏳ Remaining: <strong>${progress.remaining}</strong>
-        </span>
-      </div>
-
-      <p class="small muted">
-        Total episodes: ${progress.total}
-      </p>
-
-      <p class="small muted">
-        ${escapeHTML(status)}
-      </p>
-    </article>
+    </details>
   `;
 }
 
 function renderProgress() {
-  const section = ensureProgressSection();
-  const target = $('plannerProgressCards');
+  ensureProgressSection();
 
+  const target = $('plannerProgressCards');
   if (!target) return;
 
-  target.innerHTML = SLOT_NAMES.map(renderProgressCard).join('');
+  target.innerHTML = SLOT_NAMES
+    .map(renderProgressCard)
+    .join('');
 }
 
 /* =========================================
@@ -369,9 +339,7 @@ function getHistoryEntries() {
   const entries = [];
 
   SLOT_NAMES.forEach(slotName => {
-    const records = getCompletedRecords(slotName);
-
-    records.forEach(record => {
+    getCompletedRecords(slotName).forEach(record => {
       if (!record) return;
 
       entries.push({
@@ -381,10 +349,6 @@ function getHistoryEntries() {
     });
   });
 
-  /*
-   * Remove duplicate history rows for the same queue
-   * and episode. Keep the newest record.
-   */
   const unique = new Map();
 
   entries.forEach(entry => {
@@ -394,7 +358,7 @@ function getHistoryEntries() {
 
     const key = episodeId
       ? `${entry.slotName}:${episodeId}`
-      : `${entry.slotName}:${entry.completedAt || entry.date || entry.label}`;
+      : `${entry.slotName}:${entry.completedAt || entry.date || entry.label || Math.random()}`;
 
     const old = unique.get(key);
 
@@ -460,35 +424,37 @@ function renderHistoryEntry(entry) {
         <span class="pill">${escapeHTML(label)}</span>
       </div>
 
-      <p class="small">
-        ✅ ${escapeHTML(episode)}
-      </p>
+      <p class="small">✅ ${escapeHTML(episode)}</p>
 
-      <p class="small muted">
-        ${escapeHTML(date)}
-      </p>
+      <p class="small muted">${escapeHTML(date)}</p>
     </article>
   `;
 }
 
 function ensureHistorySection() {
   let section = $('plannerHistorySection');
-
   if (section) return section;
 
   section = document.createElement('section');
   section.id = 'plannerHistorySection';
-  section.className = 'section-block panel';
+  section.className = 'section-block panel planner-history';
 
   section.innerHTML = `
-    <p class="eyebrow">POSTING RECORDS</p>
-    <h2>Posting history</h2>
+    <details class="planner-folder" id="postingHistoryFolder">
+      <summary class="planner-folder-summary">
+        <span>
+          <span class="planner-folder-title">📁 Posting History</span>
+          <span class="planner-folder-hint">
+            Records from Morning, Lunch and Evening
+          </span>
+        </span>
+        <span class="pill">History</span>
+      </summary>
 
-    <p class="small muted">
-      Your recorded posting activity across all three queues.
-    </p>
-
-    <div id="plannerHistoryList" class="stack-list"></div>
+      <div class="planner-folder-content">
+        <div id="plannerHistoryList" class="stack-list"></div>
+      </div>
+    </details>
   `;
 
   const progress = $('plannerProgressSection');
@@ -496,9 +462,7 @@ function ensureHistorySection() {
   if (progress) {
     progress.after(section);
   } else {
-    const main = document.querySelector('main');
-
-    if (main) main.appendChild(section);
+    document.querySelector('main')?.appendChild(section);
   }
 
   return section;
@@ -508,7 +472,6 @@ function renderHistory() {
   ensureHistorySection();
 
   const target = $('plannerHistoryList');
-
   if (!target) return;
 
   const entries = getHistoryEntries();
@@ -518,12 +481,11 @@ function renderHistory() {
       <div class="planner-empty">
         <p>No completed posts recorded yet.</p>
         <p class="small muted">
-          Your posting history will appear here after
-          the Planner records completed episodes.
+          Posting records will appear here when the Planner
+          records completed episodes.
         </p>
       </div>
     `;
-
     return;
   }
 
@@ -540,13 +502,8 @@ function renderHistory() {
 function render() {
   settings = readSettings();
 
-  if (!settings.slots) {
-    settings.slots = {};
-  }
-
-  if (!settings.completed) {
-    settings.completed = {};
-  }
+  if (!settings.slots) settings.slots = {};
+  if (!settings.completed) settings.completed = {};
 
   renderProgress();
   renderHistory();
@@ -573,42 +530,21 @@ function bindEvents() {
     scheduleRefresh
   );
 
-  document.addEventListener(
-    'visibilitychange',
-    () => {
-      if (!document.hidden) {
-        scheduleRefresh();
-      }
-    }
-  );
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) scheduleRefresh();
+  });
 
-  window.addEventListener(
-    'focus',
-    scheduleRefresh
-  );
+  window.addEventListener('focus', scheduleRefresh);
+  window.addEventListener('pageshow', scheduleRefresh);
+  window.addEventListener('storage', scheduleRefresh);
 
-  window.addEventListener(
-    'pageshow',
-    scheduleRefresh
-  );
+  document.addEventListener('click', event => {
+    const button = event.target.closest(
+      '#saveAllPlannerSlots, #savePlannerSettings'
+    );
 
-  window.addEventListener(
-    'storage',
-    scheduleRefresh
-  );
-
-  document.addEventListener(
-    'click',
-    event => {
-      const button = event.target.closest(
-        '#saveAllPlannerSlots, #savePlannerSettings'
-      );
-
-      if (button) {
-        scheduleRefresh();
-      }
-    }
-  );
+    if (button) scheduleRefresh();
+  });
 }
 
 /* =========================================
@@ -617,33 +553,20 @@ function bindEvents() {
 
 function init() {
   if (!store()) {
-    console.warn(
-      'Planner progress waiting for StudioStore.'
-    );
+    console.warn('Planner progress waiting for StudioStore.');
     return;
   }
 
   render();
   bindEvents();
 
-  /*
-   * A light refresh keeps progress current if another
-   * Planner component updates local storage.
-   */
   window.setInterval(() => {
-    if (!document.hidden) {
-      render();
-    }
+    if (!document.hidden) render();
   }, 15000);
 
-  console.log(
-    'Planner progress and posting history loaded.'
-  );
+  console.log('Planner folders, progress and history loaded.');
 }
 
-document.addEventListener(
-  'DOMContentLoaded',
-  init
-);
+document.addEventListener('DOMContentLoaded', init);
 
 })();
