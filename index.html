@@ -389,5 +389,35 @@
   <script src="js/whatsapp-shell.js"></script>
   <script src="js/story-reminder-monitor.js"></script>
 
+  <script>
+    (() => {
+      'use strict';
+
+      function removeDuplicateWelcomeCards() {
+        const cards = document.querySelectorAll(
+          'body.welcome-page > .welcome-shell'
+        );
+
+        cards.forEach((card, index) => {
+          if (index > 0) {
+            card.remove();
+          }
+        });
+      }
+
+      // Clean up duplicates already present.
+      removeDuplicateWelcomeCards();
+
+      // Protect against another script inserting a duplicate later.
+      const observer = new MutationObserver(() => {
+        removeDuplicateWelcomeCards();
+      });
+
+      observer.observe(document.body, {
+        childList: true
+      });
+    })();
+  </script>
+
 </body>
 </html>
