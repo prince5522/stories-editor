@@ -1,11 +1,11 @@
 
 /* =========================================
-   CHANNEL STUDIO v23
+   CHANNEL STUDIO v24
    COMPLETE OFFLINE CACHE
    Welcome page refresh + Login support
 ========================================= */
 
-const CACHE = 'channel-studio-shell-v23';
+const CACHE = 'channel-studio-shell-v24';
 const CACHE_PREFIX = 'channel-studio-shell-';
 const FETCH_TIMEOUT = 6000;
 
