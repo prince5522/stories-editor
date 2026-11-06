@@ -1,44 +1,95 @@
 
 /* =========================================
-   CHANNEL STUDIO v20
-   OFFLINE-FIRST PERFORMANCE
+   CHANNEL STUDIO v21
+   COMPLETE OFFLINE CACHE
+   All existing pages + CSS + JavaScript
 ========================================= */
 
-const CACHE = 'channel-studio-shell-v20';
+const CACHE = 'channel-studio-shell-v21';
 const CACHE_PREFIX = 'channel-studio-shell-';
-const INSTALL_FETCH_TIMEOUT = 2500;
+const FETCH_TIMEOUT = 6000;
 
-const CORE = [
-  './', 'index.html', 'home.html', 'stories.html',
-  'docs.html', 'episodes.html', 'ready-made.html',
-  'planner.html', 'publish.html', 'hype.html',
-  'media.html', 'channels.html', 'complaints.html',
-  'reviews.html', 'notifications.html', 'backup.html',
-  'settings.html', 'manifest.webmanifest',
+/* Every existing HTML page */
+const PAGES = [
+  './',
+  'index.html',
+  'home.html',
+  'stories.html',
+  'episodes.html',
+  'ready-made.html',
+  'planner.html',
+  'publish.html',
+  'hype.html',
+  'media.html',
+  'channels.html',
+  'docs.html',
+  'complaints.html',
+  'reviews.html',
+  'notifications.html',
+  'backup.html',
+  'settings.html',
+  'accounts.html'
+];
 
-  'css/styles.css', 'css/animations.css',
-  'css/themes.css', 'css/whatsapp-shell.css',
-  'css/ready-made.css',
+/* Existing stylesheets */
+const STYLES = [
+  'css/styles.css',
+  'css/animations.css',
+  'css/themes.css',
+  'css/whatsapp-shell.css',
+  'css/ready-made.css'
+];
 
-  'js/app-shell-behavior.js', 'js/storage.js',
-  'js/themes.js', 'js/transitions.js', 'js/effects.js',
-  'js/notifications.js', 'js/feedback.js', 'js/app.js',
-  'js/story-engine.js', 'js/story-split-post.js',
-  'js/documents.js', 'js/creator-lab.js', 'js/media.js',
-  'js/media-attach.js', 'js/planner-media.js',
-  'js/planner-story-slots.js', 'js/planner-publish.js',
-  'js/planner-progress.js', 'js/planner-stage3.js',
-  'js/planner-stage4.js', 'js/ready-made.js',
-  'js/supabase-cloud.js', 'js/whatsapp-shell.js',
+/* Existing JavaScript files */
+const SCRIPTS = [
+  'js/app-shell-behavior.js',
+  'js/storage.js',
+  'js/themes.js',
+  'js/transitions.js',
+  'js/effects.js',
+  'js/notifications.js',
+  'js/feedback.js',
+  'js/app.js',
+  'js/story-engine.js',
+  'js/story-split-post.js',
+  'js/documents.js',
+  'js/creator-lab.js',
+  'js/media.js',
+  'js/media-attach.js',
+  'js/planner-media.js',
+  'js/planner-story-slots.js',
+  'js/planner-publish.js',
+  'js/planner-progress.js',
+  'js/planner-stage3.js',
+  'js/planner-stage4.js',
+  'js/ready-made.js',
+  'js/supabase-cloud.js',
+  'js/whatsapp-shell.js',
   'js/wallpaper.js',
+  'js/story-runway-alerts.js'
+];
 
+/* App manifest and icons */
+const OTHER_FILES = [
+  'manifest.webmanifest',
   'assets/icons/icon-192.png',
   'assets/icons/icon-512.png'
 ];
 
-async function fetchWithTimeout(url, timeoutMs) {
+const CORE = [
+  ...PAGES,
+  ...STYLES,
+  ...SCRIPTS,
+  ...OTHER_FILES
+];
+
+/* Fetch with timeout */
+async function fetchWithTimeout(url) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(
+    () => controller.abort(),
+    FETCH_TIMEOUT
+  );
 
   try {
     return await fetch(url, {
@@ -50,111 +101,164 @@ async function fetchWithTimeout(url, timeoutMs) {
   }
 }
 
-/* INSTALL */
+/* =========================================
+   INSTALL
+========================================= */
+
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
 
+    /* Preserve files from previous versions */
     const oldCaches = (await caches.keys()).filter(name =>
-      name.startsWith(CACHE_PREFIX) && name !== CACHE
+      name.startsWith(CACHE_PREFIX) &&
+      name !== CACHE
     );
 
-    // Preserve files already cached by earlier versions.
     for (const oldName of oldCaches) {
       try {
         const oldCache = await caches.open(oldName);
         const requests = await oldCache.keys();
 
-        await Promise.all(requests.map(async request => {
+        for (const request of requests) {
           try {
-            if (await cache.match(request)) return;
+            if (await cache.match(request)) continue;
 
             const response = await oldCache.match(request);
-            if (response) await cache.put(request, response);
+
+            if (response) {
+              await cache.put(request, response);
+            }
           } catch (error) {
-            console.warn('Cache migration item failed:', error);
+            console.warn(
+              '[Channel Studio] Migration item failed:',
+              request.url,
+              error
+            );
           }
-        }));
+        }
       } catch (error) {
-        console.warn('Cache migration failed:', error);
+        console.warn(
+          '[Channel Studio] Cache migration failed:',
+          error
+        );
       }
     }
 
-    // Refresh core files with a strict timeout.
+    /* Refresh every core file independently */
     await Promise.all(CORE.map(async path => {
-      const url = new URL(path, self.registration.scope);
+      const url = new URL(
+        path,
+        self.registration.scope
+      );
 
       try {
-        const response = await fetchWithTimeout(
-          url.href,
-          INSTALL_FETCH_TIMEOUT
-        );
+        const response = await fetchWithTimeout(url.href);
 
         if (response && response.ok) {
           await cache.put(url.href, response);
         }
       } catch (error) {
-        // Keep the migrated cache when offline.
+        /* Keep the old cached copy when offline */
+        console.warn(
+          '[Channel Studio] Keeping cached file:',
+          path
+        );
       }
     }));
 
     await self.skipWaiting();
-    console.log('[Channel Studio] v20 installed');
+
+    console.log(
+      '[Channel Studio] v21 installed'
+    );
   })());
 });
 
-/* ACTIVATE */
+/* =========================================
+   ACTIVATE
+========================================= */
+
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
 
-    await Promise.all(keys
-      .filter(name =>
-        name.startsWith(CACHE_PREFIX) && name !== CACHE
-      )
-      .map(name => caches.delete(name))
+    await Promise.all(
+      keys
+        .filter(name =>
+          name.startsWith(CACHE_PREFIX) &&
+          name !== CACHE
+        )
+        .map(name => caches.delete(name))
     );
 
     await self.clients.claim();
-    console.log('[Channel Studio] v20 activated');
+
+    console.log(
+      '[Channel Studio] v21 activated'
+    );
   })());
 });
 
-/* MANUAL UPDATE */
+/* =========================================
+   MANUAL UPDATE SUPPORT
+========================================= */
+
 self.addEventListener('message', event => {
   if (event.data === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
 
-/* OFFLINE FALLBACK */
-async function offlineResponse(request) {
-  if (request.mode === 'navigate') {
-    const cache = await caches.open(CACHE);
+/* =========================================
+   OFFLINE FALLBACK
+========================================= */
 
-    return (
-      await cache.match(request, { ignoreSearch: true }) ||
-      await cache.match('index.html') ||
-      await cache.match('./') ||
-      new Response(
-        'Channel Studio is offline and this page has not been cached yet.',
-        {
-          status: 503,
-          headers: {
-            'Content-Type': 'text/plain; charset=utf-8'
-          }
+async function offlineResponse(request) {
+  const cache = await caches.open(CACHE);
+
+  if (request.mode === 'navigate') {
+    const cachedPage = await cache.match(
+      request,
+      { ignoreSearch: true }
+    );
+
+    if (cachedPage) return cachedPage;
+
+    const homePage = await cache.match('home.html');
+
+    if (homePage) return homePage;
+
+    const welcomePage = await cache.match('index.html');
+
+    if (welcomePage) return welcomePage;
+
+    return new Response(
+      'Channel Studio is offline. Please open a page that has already been cached.',
+      {
+        status: 503,
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8'
         }
-      )
+      }
     );
   }
 
-  return new Response('', {
-    status: 504,
-    statusText: 'Offline resource unavailable'
-  });
+  return new Response(
+    'This resource is not available offline yet.',
+    {
+      status: 504,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8'
+      }
+    }
+  );
 }
 
-/* CACHE-FIRST FETCH */
+/* =========================================
+   FETCH HANDLER
+========================================= */
+
 self.addEventListener('fetch', event => {
   const request = event.request;
 
@@ -162,35 +266,46 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(request.url);
 
-  // Do not intercept external services.
+  /* Do not intercept external services */
   if (url.origin !== self.location.origin) return;
 
+  /* Do not interfere with partial media requests */
+  if (request.headers.has('range')) return;
+
   event.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+
     try {
-      const cache = await caches.open(CACHE);
+      /* Return cached content immediately */
+      const cached = await cache.match(
+        request,
+        { ignoreSearch: true }
+      );
 
-      const cached = await cache.match(request, {
-        ignoreSearch: true
-      });
-
-      // Cached pages/files return immediately.
       if (cached) return cached;
 
-      // Only missing files require the network.
+      /* Fetch resources not yet cached */
       const response = await fetch(request);
 
       if (response && response.ok) {
-        await cache.put(request, response.clone());
+        await cache.put(
+          request,
+          response.clone()
+        );
       }
 
       return response;
+
     } catch (error) {
       return offlineResponse(request);
     }
   })());
 });
 
-/* NOTIFICATION CLICK */
+/* =========================================
+   NOTIFICATION CLICK
+========================================= */
+
 self.addEventListener('notificationclick', event => {
   event.notification.close();
 
