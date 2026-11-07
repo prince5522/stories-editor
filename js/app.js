@@ -303,6 +303,46 @@ function wireTaskCompletion() {
   if ($('channelCount')) {
     $('channelCount').textContent = channels.length;
   }
+
+// Display the latest saved stories on the dashboard.
+  const homeStories = $('homeStories');
+
+  if (homeStories) {
+    homeStories.innerHTML = stories.length
+      ? stories.slice().reverse().slice(0, 4).map(story =>
+          item(
+            story.title || 'Untitled story',
+            (story.content || '').slice(0, 160),
+            story.date || '',
+            '',
+            '',
+            ''
+          )
+        ).join('')
+      : '<div class="empty-state">No saved stories yet. Add your first story.</div>';
+  }
+
+  // Display the latest saved channels on the dashboard.
+  const homeChannels = $('homeChannels');
+
+  if (homeChannels) {
+    homeChannels.innerHTML = channels.length
+      ? channels.slice().reverse().slice(0, 4).map(channel =>
+          item(
+            channel.name || 'Unnamed channel',
+            channel.role === 'my'
+              ? 'My channel'
+              : channel.role === 'source'
+                ? 'Source / partner channel'
+                : 'Other channel',
+            channel.date || '',
+            channel.url || '',
+            '',
+            ''
+          )
+        ).join('')
+      : '<div class="empty-state">No saved channels yet. Add your first channel.</div>';
+  }
     
   // Keep each task's original storage index for safe deletion.
   const tasks = allTasks
