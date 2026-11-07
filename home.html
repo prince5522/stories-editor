@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en" data-theme="system">
 <head>
@@ -807,6 +806,7 @@
 
 <!-- ACCOUNT SESSION AND APPLICATION LOADER -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/storage.js"></script>
 <script src="js/supabase-cloud.js"></script>
 
 <script>
@@ -892,8 +892,8 @@
     }
 
     // Load the existing application scripts in their original order.
+    // storage.js is already loaded above before the cloud system.
     const applicationScripts = [
-      'js/storage.js',
       'js/themes.js',
       'js/transitions.js',
       'js/effects.js',
