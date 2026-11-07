@@ -942,78 +942,337 @@ ${caption}${source ? '\n\nFrom: ' + source : ''}${destination ? '\nFor: ' + dest
 
   /* BACKUP */
 
-  function getAll() {
-    return store().all();
+  /* =====================================================
+   BACKUP SYSTEM — STORY STUDIO
+   Version 2.0
+   Supports new and legacy JSON backups
+===================================================== */
+
+function getAll() {
+  return store().all();
+}
+
+function setupBackup() {
+  const exportButton = $('exportBackup');
+  const restoreButton = $('restoreBackup');
+  const fileInput = $('backupFile');
+  const status = $('backupStatus');
+  const exportStatus = $('exportStatus');
+  const fileInfo = $('selectedBackupInfo');
+
+  const MAX_BACKUP_SIZE = 25 * 1024 * 1024;
+
+  function showStatus(message, isError = false) {
+    if (status) {
+      status.textContent = message;
+      status.style.color = isError ? '#dc5656' : '';
+    }
+
+    if (window.studioToast) {
+      window.studioToast(message);
+    }
   }
 
-  function setupBackup() {
-    $('exportBackup')?.addEventListener('click', () => {
+  function setButtonLoading(button, loading, normalText) {
+    if (!button) return;
+
+    button.disabled = loading;
+    button.textContent = loading
+      ? 'Please wait...'
+      : normalText;
+  }
+
+  function validateData(data) {
+    if (
+      !data ||
+      typeof data !== 'object' ||
+      Array.isArray(data)
+    ) {
+      throw new Error('Invalid backup structure.');
+    }
+
+    const entries = Object.entries(data);
+
+    if (!entries.length) {
+      throw new Error('The backup contains no saved data.');
+    }
+
+    for (const [key, value] of entries) {
+      if (
+        typeof key !== 'string' ||
+        !key.trim() ||
+        key.length > 200
+      ) {
+        throw new Error('Invalid backup record name.');
+      }
+
+      if (value === undefined) {
+        throw new Error('Backup contains an invalid value.');
+      }
+
+      JSON.stringify(value);
+    }
+
+    return data;
+  }
+
+  function createBackup() {
+    const data = getAll();
+
+    const backup = {
+      application: 'Story Studio',
+      format: 'story-studio-backup',
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      records: data
+    };
+
+    return backup;
+  }
+
+  /* EXPORT */
+
+  exportButton?.addEventListener('click', () => {
+    try {
+      setButtonLoading(
+        exportButton,
+        true,
+        'Download full backup'
+      );
+
+      const backup = createBackup();
+
+      const json = JSON.stringify(backup, null, 2);
+
       const blob = new Blob(
-        [JSON.stringify(getAll(), null, 2)],
+        [json],
         { type: 'application/json' }
       );
 
       const url = URL.createObjectURL(blob);
+
       const link = document.createElement('a');
 
+      const date = new Date()
+        .toISOString()
+        .replace(/[:.]/g, '-');
+
       link.href = url;
-      link.download = 'channel-studio-backup.json';
+      link.download = `story-studio-backup-${date}.json`;
 
+      document.body.appendChild(link);
       link.click();
+      link.remove();
 
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1500);
 
-      if ($('backupStatus')) {
-        $('backupStatus').textContent = 'Backup exported.';
+      const count = Object.keys(backup.records).length;
+
+      const message =
+        `Backup exported successfully. ${count} data sections included.`;
+
+      if (exportStatus) {
+        exportStatus.textContent = message;
       }
-    });
 
-    $('restoreBackup')?.addEventListener('click', () => {
-      const file = $('backupFile')?.files?.[0];
+      window.studioToast?.('Backup downloaded successfully.');
 
-      if (!file) {
-        window.studioToast('Choose a backup JSON file first.');
-        return;
+    } catch (error) {
+      console.error('Backup export failed:', error);
+
+      if (exportStatus) {
+        exportStatus.textContent =
+          'Backup export failed. Check browser storage.';
       }
 
-      const reader = new FileReader();
+      window.studioToast?.('Could not create backup.');
 
-      reader.onload = () => {
-        try {
-          const data = JSON.parse(reader.result);
+    } finally {
+      setButtonLoading(
+        exportButton,
+        false,
+        'Download full backup'
+      );
+    }
+  });
 
-          if (
-            !data ||
-            typeof data !== 'object' ||
-            Array.isArray(data)
-          ) {
-            throw new Error('Invalid backup structure');
-          }
+  /* SELECTED FILE INFORMATION */
 
-          Object.entries(data).forEach(([key, value]) => {
-            set(key, value);
-          });
+  fileInput?.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
 
-          if ($('backupStatus')) {
-            $('backupStatus').textContent =
-              'Backup restored. Refreshing…';
-          }
+    if (!file) {
+      if (fileInfo) {
+        fileInfo.textContent = 'No backup file selected.';
+      }
+      return;
+    }
 
-          location.reload();
-        } catch (error) {
-          console.error(error);
+    if (fileInfo) {
+      const size = (file.size / 1024).toFixed(1);
 
-          if ($('backupStatus')) {
-            $('backupStatus').textContent =
-              'Invalid backup file.';
+      fileInfo.textContent =
+        `${file.name} • ${size} KB`;
+    }
+
+    if (status) {
+      status.textContent = '';
+    }
+  });
+
+  /* RESTORE */
+
+  restoreButton?.addEventListener('click', async () => {
+    const file = fileInput?.files?.[0];
+
+    if (!file) {
+      showStatus('Choose a backup JSON file first.', true);
+      return;
+    }
+
+    if (file.size > MAX_BACKUP_SIZE) {
+      showStatus(
+        'This backup is too large. Maximum supported size is 25 MB.',
+        true
+      );
+      return;
+    }
+
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      showStatus('Please select a JSON backup file.', true);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Restore this backup?\n\n' +
+      'Your current local app data will be replaced. ' +
+      'Make sure you have downloaded a backup of your current data first.'
+    );
+
+    if (!confirmed) return;
+
+    setButtonLoading(
+      restoreButton,
+      true,
+      'Restore selected backup'
+    );
+
+    try {
+      const text = await file.text();
+
+      const parsed = JSON.parse(text);
+
+      let importedData;
+
+      // Version 2 backup format.
+      if (
+        parsed &&
+        parsed.format === 'story-studio-backup' &&
+        parsed.application === 'Story Studio'
+      ) {
+        importedData = parsed.records;
+      } else {
+        // Support older backups that stored
+        // the records directly in the JSON object.
+        importedData = parsed;
+      }
+
+      validateData(importedData);
+
+      const storage = store();
+
+      if (
+        !storage ||
+        typeof storage.all !== 'function' ||
+        typeof storage.set !== 'function' ||
+        typeof storage.remove !== 'function'
+      ) {
+        throw new Error('Local storage service is unavailable.');
+      }
+
+      // Save a recovery snapshot before modifying anything.
+      const previousData = storage.all();
+
+      const previousKeys = Object.keys(previousData);
+
+      try {
+        // Remove current records first.
+        previousKeys.forEach(key => {
+          storage.remove(key);
+        });
+
+        // Restore all imported records.
+        for (const [key, value] of Object.entries(importedData)) {
+          const saved = storage.set(key, value);
+
+          if (saved !== true) {
+            throw new Error(
+              `Could not restore record: ${key}`
+            );
           }
         }
-      };
 
-      reader.readAsText(file);
-    });
-  }
+        // Verify the restored records.
+        const restoredData = storage.all();
 
+        for (const key of Object.keys(importedData)) {
+          if (
+            !Object.prototype.hasOwnProperty.call(
+              restoredData,
+              key
+            )
+          ) {
+            throw new Error(
+              `Restore verification failed: ${key}`
+            );
+          }
+        }
+
+      } catch (restoreError) {
+        console.error(
+          'Restore failed. Attempting recovery.',
+          restoreError
+        );
+
+        // Attempt to return the device to its previous state.
+        Object.keys(storage.all()).forEach(key => {
+          storage.remove(key);
+        });
+
+        for (const [key, value] of Object.entries(previousData)) {
+          storage.set(key, value);
+        }
+
+        throw restoreError;
+      }
+
+      showStatus(
+        'Backup restored successfully. Refreshing app...'
+      );
+
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+
+    } catch (error) {
+      console.error('Backup restore failed:', error);
+
+      showStatus(
+        error.message || 'Could not restore this backup.',
+        true
+      );
+
+    } finally {
+      setButtonLoading(
+        restoreButton,
+        false,
+        'Restore selected backup'
+      );
+    }
+  });
+}
   /* SETTINGS */
 
   function setupSettings() {
