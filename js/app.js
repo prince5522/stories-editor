@@ -304,6 +304,47 @@ function wireTaskCompletion() {
     $('channelCount').textContent = channels.length;
   }
 
+<!-- SAVED STORIES AND CHANNELS -->
+<section class="home-section">
+
+  <div class="home-section-heading">
+    <div>
+      <p class="eyebrow">YOUR LIBRARY</p>
+      <h2>My saved stories</h2>
+      <p class="muted small">Continue managing your saved stories.</p>
+    </div>
+
+    <a class="text-link" href="stories.html">
+      View all →
+    </a>
+  </div>
+
+  <div id="homeStories" class="stack-list">
+    <div class="empty-state">Loading saved stories...</div>
+  </div>
+
+</section>
+
+<section class="home-section">
+
+  <div class="home-section-heading">
+    <div>
+      <p class="eyebrow">YOUR NETWORK</p>
+      <h2>My channels</h2>
+      <p class="muted small">Your saved WhatsApp channel links.</p>
+    </div>
+
+    <a class="text-link" href="channels.html">
+      View all →
+    </a>
+  </div>
+
+  <div id="homeChannels" class="stack-list">
+    <div class="empty-state">Loading saved channels...</div>
+  </div>
+
+</section>
+    
   // Keep each task's original storage index for safe deletion.
   const tasks = allTasks
     .map((task, index) => ({
