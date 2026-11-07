@@ -41,6 +41,8 @@
   let currentUser = null;
   let currentProfile = null;
   let initialized = false;
+  let initializationPromise = null;
+  let backgroundSyncPromise = null;
 
   let queue = Promise.resolve();
 
@@ -299,7 +301,6 @@
       return data;
     }
 
-    // Recover username from Supabase Auth metadata.
     const username = normalizeUsername(
       currentUser.user_metadata?.username
     );
@@ -481,7 +482,7 @@
     }
   }
 
-  // Keep local storage working normally.
+  // Local storage remains the primary immediate save.
   window.StudioStore.set = function (key, value) {
     const before =
       key === 'readyMadeEpisodes'
@@ -568,7 +569,6 @@
         if (uploadError) throw uploadError;
       }
 
-      // Restore locally saved story folder names.
       const recovered = cloudItems.filter(ep => {
         const original = localById.get(String(ep.id));
 
@@ -603,7 +603,6 @@
       if (uploadError) throw uploadError;
 
     } else if (data && !data.length) {
-      // Do not silently upload another account's local data.
       originalSet('readyMadeEpisodes', []);
     }
 
@@ -632,7 +631,6 @@
 
     currentUser = session.user;
     ownerId = session.user.id;
-
     initialized = false;
 
     await loadProfile();
@@ -695,8 +693,6 @@
         );
       }
 
-      // Do not rely on an RLS-protected username lookup.
-      // The unique database index is the final duplicate check.
       const { data: sessionData, error: sessionError } =
         await client.auth.getSession();
 
@@ -707,7 +703,6 @@
       let result;
 
       if (current && current.is_anonymous) {
-        // Upgrade the guest identity instead of replacing it.
         result = await client.auth.updateUser({
           email: email,
           password: password,
@@ -939,77 +934,131 @@
   }
 
   /* =========================================================
-     INITIALIZATION
+     FAST INITIALIZATION
+     Authentication is established first.
+     Profile and episode sync happen in the background.
      ========================================================= */
 
   async function init() {
-    status('Connecting to Supabase…', false);
-
-    if (
-      !window.supabase ||
-      !window.supabase.createClient
-    ) {
-      status('Cloud unavailable · local mode', false);
-
-      return {
-        online: false
-      };
+    if (initializationPromise) {
+      return initializationPromise;
     }
 
-    try {
-      client = window.supabase.createClient(
-        PROJECT_URL,
-        PUBLISHABLE_KEY,
-        {
-          auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: true
-          }
-        }
-      );
+    initializationPromise = (async function () {
+      status('Connecting to Supabase…', false);
 
-      const { data, error } =
-        await client.auth.getSession();
+      if (
+        !window.supabase ||
+        !window.supabase.createClient
+      ) {
+        status('Cloud unavailable · local mode', false);
 
-      if (error) throw error;
-
-      if (!data.session) {
-        const guest =
-          await client.auth.signInAnonymously();
-
-        if (guest.error) throw guest.error;
+        return {
+          online: false,
+          error: 'Supabase library is unavailable.'
+        };
       }
 
-      const account = await refreshAccount();
+      try {
+        client = window.supabase.createClient(
+          PROJECT_URL,
+          PUBLISHABLE_KEY,
+          {
+            auth: {
+              persistSession: true,
+              autoRefreshToken: true,
+              detectSessionInUrl: true
+            }
+          }
+        );
 
-      return {
-        online: true,
-        userId: account.userId,
-        username: account.username,
-        user: account.user
-      };
+        const { data, error } =
+          await client.auth.getSession();
 
-    } catch (error) {
-      console.error(
-        'Story Studio cloud initialization failed:',
-        error
-      );
+        if (error) throw error;
 
-      initialized = false;
+        let session = data.session;
 
-      status(
-        'Cloud setup needed · local copy kept',
-        false
-      );
+        // Create a guest session only when no session exists.
+        if (!session) {
+          const guest =
+            await client.auth.signInAnonymously();
 
-      notifyError(error);
+          if (guest.error) throw guest.error;
 
-      return {
-        online: false,
-        error: errorMessage(error)
-      };
-    }
+          session = guest.data.session;
+        }
+
+        if (!session || !session.user) {
+          throw new Error(
+            'Supabase did not return an active session.'
+          );
+        }
+
+        // Make account identity available immediately.
+        currentUser = session.user;
+        ownerId = session.user.id;
+        currentProfile = null;
+        initialized = false;
+
+        status('Account connected · syncing cloud data…', true);
+
+        // Start database work without blocking the login page.
+        backgroundSyncPromise = Promise.resolve()
+          .then(() => refreshAccount())
+          .catch(error => {
+            console.error(
+              'Background cloud synchronization failed:',
+              error
+            );
+
+            initialized = false;
+
+            status(
+              'Account connected · cloud sync needs attention',
+              false
+            );
+
+            notifyError(error);
+
+            return {
+              success: false,
+              error: errorMessage(error)
+            };
+          });
+
+        return {
+          online: true,
+          authenticated: true,
+          userId: ownerId,
+          username: getUsername(),
+          user: currentUser,
+          syncing: true
+        };
+
+      } catch (error) {
+        console.error(
+          'Story Studio cloud initialization failed:',
+          error
+        );
+
+        initialized = false;
+
+        status(
+          'Cloud setup needed · local copy kept',
+          false
+        );
+
+        notifyError(error);
+
+        return {
+          online: false,
+          error: errorMessage(error)
+        };
+      }
+    })();
+
+    return initializationPromise;
   }
 
   /* =========================================================
@@ -1017,8 +1066,7 @@
      ========================================================= */
 
   window.ChannelStudioCloud = {
-
-    ready: init(),
+    ready: null,
 
     getClient: () => client,
 
@@ -1031,6 +1079,10 @@
       if (error) return null;
 
       currentUser = data.user;
+
+      if (currentUser) {
+        ownerId = currentUser.id;
+      }
 
       return currentUser;
     },
@@ -1055,11 +1107,23 @@
 
     refresh: refreshAccount,
 
+    waitForCloudSync: async () => {
+      if (backgroundSyncPromise) {
+        return await backgroundSyncPromise;
+      }
+
+      return {
+        success: initialized
+      };
+    },
+
     isConnected: () => initialized,
 
-    isLoggedIn: () => !!currentUser &&
-      !currentUser.is_anonymous
-
+    isLoggedIn: () =>
+      !!currentUser && !currentUser.is_anonymous
   };
+
+  // Start once and expose the same promise to every page script.
+  window.ChannelStudioCloud.ready = init();
 
 })();
