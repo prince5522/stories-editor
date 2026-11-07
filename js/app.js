@@ -283,9 +283,9 @@ function wireTaskCompletion() {
   /* HOME */
 
   function refreshHome() {
-    renderWeeklyActivity( ) ;
-    
-  const stories = get('stories');
+    renderWeeklyActivity();
+
+    const stories = get('stories');
   const allTasks = get('tasks');
   const channels = get('channels');
 
