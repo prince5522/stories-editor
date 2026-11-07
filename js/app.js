@@ -145,6 +145,141 @@ function wireTaskCompletion() {
   });
 }
 
+        /* WEEKLY ACTIVITY */
+
+  function renderWeeklyActivity() {
+    const container = $('homeWeek');
+    if (!container) return;
+
+    const dayNames = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday'
+    ];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const monday = new Date(today);
+    monday.setDate(
+      monday.getDate() - ((monday.getDay() + 6) % 7)
+    );
+
+    const week = dayNames.map((name, index) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + index);
+
+      return {
+        name,
+        date,
+        tasks: []
+      };
+    });
+
+    const tasks = get('tasks').filter(task => task && !task.done);
+
+    tasks.forEach(task => {
+      let scheduledDate = null;
+
+      if (task.date) {
+        const match = String(task.date).match(
+          /^(\d{4})-(\d{2})-(\d{2})/
+        );
+
+        if (match) {
+          scheduledDate = new Date(
+            Number(match[1]),
+            Number(match[2]) - 1,
+            Number(match[3])
+          );
+        }
+      }
+
+      // Date-specific tasks appear only on their scheduled date.
+      if (scheduledDate && !Number.isNaN(scheduledDate.getTime())) {
+        scheduledDate.setHours(0, 0, 0, 0);
+
+        const difference = Math.round(
+          (scheduledDate.getTime() - monday.getTime()) /
+          86400000
+        );
+
+        if (difference >= 0 && difference < 7) {
+          week[difference].tasks.push(task);
+        }
+
+        return;
+      }
+
+      // Weekday-based tasks appear on their selected weekdays.
+      const selectedDays = Array.isArray(task.days)
+        ? task.days
+        : [];
+
+      selectedDays.forEach(day => {
+        const index = dayNames.findIndex(name =>
+          name.toLowerCase() === String(day).toLowerCase()
+        );
+
+        if (index !== -1) {
+          week[index].tasks.push(task);
+        }
+      });
+    });
+
+    container.innerHTML = week.map(day => {
+      const isToday =
+        day.date.getTime() === today.getTime();
+
+      const count = day.tasks.length;
+
+      const taskPreview = day.tasks
+        .slice(0, 2)
+        .map(task => `
+          <p class="home-week-task">
+            ${esc(task.title || 'Untitled task')}
+          </p>
+        `)
+        .join('');
+
+      const extra = count > 2
+        ? `<p class="small muted">+${count - 2} more</p>`
+        : '';
+
+      return `
+        <article class="home-week-day
+          ${isToday ? 'is-today' : ''}
+          ${count ? 'has-activity' : ''}">
+
+          <p class="home-week-name">${day.name}</p>
+
+          <strong class="home-week-date">
+            ${day.date.getDate()}
+          </strong>
+
+          <span class="home-week-count">
+            ${count} ${count === 1 ? 'task' : 'tasks'}
+          </span>
+
+          <div class="home-week-preview">
+            ${taskPreview}
+            ${extra}
+          </div>
+
+          ${isToday
+            ? '<span class="home-week-today">Today</span>'
+            : ''
+          }
+
+        </article>
+      `;
+    }).join('');
+  }
+        
   /* HOME */
 
   function refreshHome() {
