@@ -1,6 +1,10 @@
 
-/* Story Studio cloud sync: Supabase Auth anonymous session + owner-scoped RLS.
-   Uses only the public publishable key. Never put a service_role key here. */
+/* Story Studio Cloud Sync
+   Supabase Auth: anonymous guest upgrade + email/password accounts.
+   Preserves existing owner identity when upgrading a guest account.
+   Public publishable key only. Never use service_role here.
+*/
+
 (function () {
   'use strict';
 
@@ -9,10 +13,10 @@
 
   const statusEl = () => document.getElementById('cloudStatus');
 
-  function status(text, online) {
+  function status(message, online) {
     const el = statusEl();
     if (el) {
-      el.textContent = text;
+      el.textContent = message;
       el.dataset.online = online ? 'true' : 'false';
     }
   }
@@ -43,7 +47,10 @@
       word_count: Number(ep.word_count) || 0,
       reading_time_min: Number(ep.reading_time_min) || 0,
 
-      content_rating: ep.content_rating === '18+' ? '18+' : 'general',
+      content_rating: ep.content_rating === '18+'
+        ? '18+'
+        : 'general',
+
       source: 'manual_ready_made',
 
       scheduled_post_at: ep.scheduled_post_at || null,
@@ -149,10 +156,10 @@
     const oldItems = Array.isArray(before) ? before : [];
     const newItems = Array.isArray(after) ? after : [];
 
-    const newIds = new Set(newItems.map(x => String(x.id)));
+    const newIds = new Set(newItems.map(ep => String(ep.id)));
 
     const removed = oldItems
-      .map(x => String(x.id))
+      .map(ep => String(ep.id))
       .filter(id => !newIds.has(id));
 
     try {
@@ -176,38 +183,316 @@
 
       status('Cloud synced ✓', true);
 
-    } catch (e) {
-      console.error('Story Studio cloud save failed:', e);
+    } catch (error) {
+      console.error('Cloud save failed:', error);
 
       status('Cloud save failed · local copy kept', false);
 
       window.dispatchEvent(
         new CustomEvent('channelstudio:cloud-error', {
-          detail: String(e.message || e)
+          detail: String(error.message || error)
         })
       );
     }
   }
 
+  // Automatically back up Ready-Made Episodes.
   window.StudioStore.set = function (key, value) {
     const before = key === 'readyMadeEpisodes'
       ? window.StudioStore.get(key, [])
       : null;
 
-    const ok = originalSet(key, value);
+    const result = originalSet(key, value);
 
     if (key === 'readyMadeEpisodes' && Array.isArray(value)) {
       queue = queue.then(() => syncChanges(before, value));
     }
 
-    return ok;
+    return result;
   };
+
+  // Download and merge cloud episodes with local episodes.
+  async function loadCloudData() {
+    if (!client || !ownerId) {
+      throw new Error('No authenticated account.');
+    }
+
+    const { data, error } = await client
+      .from('episodes')
+      .select('*')
+      .eq('author_id', ownerId)
+      .order('season_number')
+      .order('episode_number');
+
+    if (error) throw error;
+
+    const local = window.StudioStore.get('readyMadeEpisodes', []);
+    const localItems = Array.isArray(local) ? local : [];
+
+    if (data && data.length) {
+      const localById = new Map(
+        localItems.map(ep => [String(ep.id), ep])
+      );
+
+      const cloudIds = new Set(
+        data.map(row => String(row.id))
+      );
+
+      const cloudItems = data.map(row =>
+        fromRow(row, localById.get(String(row.id)))
+      );
+
+      const localOnly = localItems.filter(
+        ep => !cloudIds.has(String(ep.id))
+      );
+
+      const merged = cloudItems.concat(localOnly);
+
+      originalSet('readyMadeEpisodes', merged);
+
+      if (localOnly.length) {
+        const { error: uploadError } = await client
+          .from('episodes')
+          .upsert(localOnly.map(toRow), { onConflict: 'id' });
+
+        if (uploadError) throw uploadError;
+      }
+
+      // Restore locally saved folder names.
+      const recovered = cloudItems.filter(ep => {
+        const original = localById.get(String(ep.id));
+
+        return original &&
+          !data.find(row => String(row.id) === String(ep.id))?.story_title &&
+          !!ep.story_title;
+      });
+
+      if (recovered.length) {
+        const { error: recoveryError } = await client
+          .from('episodes')
+          .upsert(recovered.map(toRow), { onConflict: 'id' });
+
+        if (recoveryError) throw recoveryError;
+      }
+
+    } else if (localItems.length) {
+      const { error: uploadError } = await client
+        .from('episodes')
+        .upsert(localItems.map(toRow), { onConflict: 'id' });
+
+      if (uploadError) throw uploadError;
+    }
+
+    return true;
+  }
+
+  function accountError(error) {
+    return String(
+      error && (error.message || error)
+        ? error.message || error
+        : 'An unexpected account error occurred.'
+    );
+  }
+
+  // Refresh account identity and restore its cloud library.
+  async function refreshAccount() {
+    const { data, error } = await client.auth.getSession();
+
+    if (error) throw error;
+
+    const session = data.session;
+
+    if (!session || !session.user) {
+      throw new Error('No active account session.');
+    }
+
+    ownerId = session.user.id;
+
+    initialized = false;
+
+    await loadCloudData();
+
+    initialized = true;
+
+    status('Cloud connected ✓', true);
+
+    window.dispatchEvent(
+      new CustomEvent('channelstudio:cloud-ready')
+    );
+
+    return {
+      success: true,
+      user: session.user,
+      userId: ownerId
+    };
+  }
+
+  // REGISTER: upgrade the current guest account whenever possible.
+  async function signUp(email, password) {
+    try {
+      if (!client) throw new Error('Cloud client unavailable.');
+
+      email = String(email || '').trim().toLowerCase();
+
+      if (!email || !password) {
+        throw new Error('Email and password are required.');
+      }
+
+      if (password.length < 8) {
+        throw new Error('Password must contain at least 8 characters.');
+      }
+
+      const { data: sessionData, error: sessionError } =
+        await client.auth.getSession();
+
+      if (sessionError) throw sessionError;
+
+      const currentUser = sessionData.session?.user;
+
+      let result;
+
+      if (currentUser && currentUser.is_anonymous) {
+        // Important: preserves the existing guest account ID
+        // and its cloud-owned stories during account upgrade.
+        result = await client.auth.updateUser({
+          email,
+          password
+        });
+
+      } else {
+        result = await client.auth.signUp({
+          email,
+          password
+        });
+      }
+
+      if (result.error) throw result.error;
+
+      const { data: latest, error: latestError } =
+        await client.auth.getSession();
+
+      if (latestError) throw latestError;
+
+      if (latest.session) {
+        await refreshAccount();
+      }
+
+      return {
+        success: true,
+        message: latest.session
+          ? 'Account created successfully.'
+          : 'Check your email to confirm your account.',
+        confirmationRequired: !latest.session,
+        user: result.data.user
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: accountError(error)
+      };
+    }
+  }
+
+  // LOGIN: access an existing account on another phone.
+  async function signIn(email, password) {
+    try {
+      if (!client) throw new Error('Cloud client unavailable.');
+
+      email = String(email || '').trim().toLowerCase();
+
+      if (!email || !password) {
+        throw new Error('Email and password are required.');
+      }
+
+      await queue;
+
+      const { error } = await client.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) throw error;
+
+      const account = await refreshAccount();
+
+      return {
+        success: true,
+        message: 'Welcome back! Your cloud library is restored.',
+        user: account.user
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: accountError(error)
+      };
+    }
+  }
+
+  // PASSWORD RECOVERY.
+  async function resetPassword(email) {
+    try {
+      if (!client) throw new Error('Cloud client unavailable.');
+
+      email = String(email || '').trim().toLowerCase();
+
+      if (!email) throw new Error('Enter your email address.');
+
+      const { error } = await client.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin +
+          window.location.pathname
+      });
+
+      if (error) throw error;
+
+      return {
+        success: true,
+        message: 'Password recovery email sent.'
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: accountError(error)
+      };
+    }
+  }
+
+  // LOGOUT.
+  async function signOut() {
+    try {
+      if (!client) throw new Error('Cloud client unavailable.');
+
+      await queue;
+
+      const { error } = await client.auth.signOut();
+
+      if (error) throw error;
+
+      initialized = false;
+      ownerId = null;
+
+      status('Signed out · local copy kept', false);
+
+      return {
+        success: true,
+        message: 'Signed out successfully.'
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: accountError(error)
+      };
+    }
+  }
 
   async function init() {
     status('Connecting to Supabase…', false);
 
     if (!window.supabase || !window.supabase.createClient) {
-      status('Cloud library unavailable · local mode', false);
+      status('Cloud unavailable · local mode', false);
       return { online: false };
     }
 
@@ -219,135 +504,74 @@
           auth: {
             persistSession: true,
             autoRefreshToken: true,
-            detectSessionInUrl: false
+            detectSessionInUrl: true
           }
         }
       );
 
-      let {
-        data: { session },
-        error: sessionError
-      } = await client.auth.getSession();
-
-      if (sessionError) throw sessionError;
-
-      if (!session) {
-        const result = await client.auth.signInAnonymously();
-
-        if (result.error) throw result.error;
-
-        session = result.data.session;
-      }
-
-      ownerId = session && session.user
-        ? session.user.id
-        : null;
-
-      if (!ownerId) {
-        throw new Error('Supabase did not return a user identity.');
-      }
-
-      const { data, error } = await client
-        .from('episodes')
-        .select('*')
-        .eq('author_id', ownerId)
-        .order('season_number')
-        .order('episode_number');
+      let { data, error } = await client.auth.getSession();
 
       if (error) throw error;
 
-      const local = window.StudioStore.get('readyMadeEpisodes', []);
-      const localItems = Array.isArray(local) ? local : [];
+      // Keep guest mode available for first-time users.
+      if (!data.session) {
+        const guest = await client.auth.signInAnonymously();
 
-      if (data && data.length) {
-        const localById = new Map(
-          localItems.map(ep => [String(ep.id), ep])
-        );
-
-        const cloudIds = new Set(
-          data.map(row => String(row.id))
-        );
-
-        const cloudItems = data.map(row =>
-          fromRow(row, localById.get(String(row.id)))
-        );
-
-        const localOnly = localItems.filter(
-          ep => !cloudIds.has(String(ep.id))
-        );
-
-        const merged = cloudItems.concat(localOnly);
-
-        // Restore locally saved folder names when cloud records lack them.
-        originalSet('readyMadeEpisodes', merged);
-
-        // Upload local-only episodes without deleting existing cloud records.
-        if (localOnly.length) {
-          const { error: uploadError } = await client
-            .from('episodes')
-            .upsert(localOnly.map(toRow), { onConflict: 'id' });
-
-          if (uploadError) throw uploadError;
-        }
-
-        // Save recovered story folder names back to cloud.
-        const recovered = cloudItems.filter(ep => {
-          const original = localById.get(String(ep.id));
-          return original &&
-            !data.find(row => String(row.id) === String(ep.id))?.story_title &&
-            !!ep.story_title;
-        });
-
-        if (recovered.length) {
-          const { error: recoveryError } = await client
-            .from('episodes')
-            .upsert(recovered.map(toRow), { onConflict: 'id' });
-
-          if (recoveryError) throw recoveryError;
-        }
-
-      } else if (localItems.length) {
-        const { error: uploadError } = await client
-          .from('episodes')
-          .upsert(localItems.map(toRow), { onConflict: 'id' });
-
-        if (uploadError) throw uploadError;
+        if (guest.error) throw guest.error;
       }
 
-      initialized = true;
-
-      status('Cloud connected ✓', true);
-
-      window.dispatchEvent(
-        new CustomEvent('channelstudio:cloud-ready')
-      );
+      const account = await refreshAccount();
 
       return {
         online: true,
-        userId: ownerId
+        userId: account.userId,
+        user: account.user
       };
 
-    } catch (e) {
-      console.error('Story Studio Supabase setup failed:', e);
+    } catch (error) {
+      console.error('Story Studio cloud setup failed:', error);
+
+      initialized = false;
 
       status('Cloud setup needed · local copy kept', false);
 
       window.dispatchEvent(
         new CustomEvent('channelstudio:cloud-error', {
-          detail: String(e.message || e)
+          detail: accountError(error)
         })
       );
 
       return {
         online: false,
-        error: String(e.message || e)
+        error: accountError(error)
       };
     }
   }
 
+  // Public account and cloud API.
   window.ChannelStudioCloud = {
     ready: init(),
-    getClient: () => client
+
+    getClient: () => client,
+
+    getUser: async () => {
+      if (!client) return null;
+
+      const { data } = await client.auth.getUser();
+
+      return data.user || null;
+    },
+
+    getUserId: () => ownerId,
+
+    signUp,
+    signIn,
+    signOut,
+    resetPassword,
+
+    refresh: refreshAccount,
+
+    isConnected: () => initialized
   };
 
 })();
