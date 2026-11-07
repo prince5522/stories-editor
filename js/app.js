@@ -99,51 +99,51 @@
   }
 
   /* DELETION */
+/* TASK COMPLETION */
 
-  function wireRemove() {
-    if (document.documentElement.dataset.removeWired) return;
+function wireTaskCompletion() {
+  if (document.documentElement.dataset.taskCompletionWired) return;
 
-    document.documentElement.dataset.removeWired = '1';
+  document.documentElement.dataset.taskCompletionWired = '1';
 
-    document.addEventListener('click', event => {
-      const button = event.target.closest('[data-remove]');
-      if (!button) return;
+  document.addEventListener('click', event => {
+    const button = event.target.closest(
+      '[data-home-done], [data-done]'
+    );
 
-      const key = button.dataset.remove;
-      const index = Number(button.dataset.id);
+    if (!button) return;
 
-      const records = get(key);
+    const index = Number(
+      button.dataset.homeDone ?? button.dataset.done
+    );
 
-      if (
-        !Number.isInteger(index) ||
-        index < 0 ||
-        index >= records.length
-      ) {
-        return;
-      }
+    const tasks = get('tasks');
 
-      records.splice(index, 1);
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= tasks.length
+    ) {
+      return;
+    }
 
-      if (!set(key, records)) {
-        window.studioToast('Could not delete this item.');
-        return;
-      }
+    tasks[index].done = !tasks[index].done;
 
-      // Update only the affected list.
-      if (key === 'stories') renderStories();
-      if (key === 'tasks') {
-        renderTasks();
-        refreshHome();
-      }
-      if (key === 'channels') {
-        renderChannels();
-        refreshHome();
-      }
-      if (key === 'hypes') renderHypes();
+    if (!set('tasks', tasks)) {
+      window.studioToast('Could not update task.');
+      return;
+    }
 
-      window.studioToast('Item deleted.');
-    });
-  }
+    renderTasks();
+    refreshHome();
+
+    window.studioToast(
+      tasks[index].done
+        ? 'Task marked complete.'
+        : 'Task marked pending.'
+    );
+  });
+}
 
   /* HOME */
 
@@ -1478,7 +1478,7 @@ function setupBackup() {
   /* INITIALIZATION */
 
   document.addEventListener('DOMContentLoaded', () => {
-    wireRemove();
+    wireTaskCompleation();
 
     // Stories page
     if (
