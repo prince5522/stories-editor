@@ -493,11 +493,10 @@
       );
     }
 
-    const {rememberOfflineAccess(username);
+    const {
       data: { session },
       error
     } = await client.auth.getSession();
-
     if (error) throw error;
 
     if (
@@ -505,6 +504,7 @@
       !session.user.is_anonymous
     ) {
       showMessage(
+         rememberOfflineAccess(username);
         'Your account is ready. Opening Story Studio…',
         true
       );
@@ -537,6 +537,7 @@
       throw new Error(
         result?.error ||
         'Sign in failed. Please try again.'
+         rememberOfflineAccess(email.split('@')[0]);
       );
     }
 
@@ -720,11 +721,6 @@
           }
         });
 
-       rememberOfflineAccess(
-          session.user.user_metadata?.username ||
-          session.user.email?.split('@')[0] ||
-          'Creator'
-        );
 
       authListener =
         listenerResult?.data?.subscription || null;
@@ -735,6 +731,11 @@
         !session.user.is_anonymous &&
         !window.location.search.includes('type=recovery')
       ) {
+         rememberOfflineAccess(
+          session.user.user_metadata?.username ||
+          session.user.email?.split('@')[0] ||
+          'Creator'
+        );
         openHome();
         return;
       }
