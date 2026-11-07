@@ -29,6 +29,17 @@
   let cloud = null;
   let usernameInput = null;
   let authListener = null;
+   function rememberOfflineAccess(username) {
+    try {
+      localStorage.setItem('channelStudio.authenticated', '1');
+
+      if (username) {
+        localStorage.setItem('channelStudio.username', username);
+      }
+    } catch (error) {
+      console.warn('Could not save offline access:', error);
+    }
+  }
 
   /* ---------------------------------------
      CHECK REQUIRED HTML ELEMENTS
@@ -482,7 +493,7 @@
       );
     }
 
-    const {
+    const {rememberOfflineAccess(username);
       data: { session },
       error
     } = await client.auth.getSession();
@@ -708,6 +719,12 @@
             );
           }
         });
+
+       rememberOfflineAccess(
+          session.user.user_metadata?.username ||
+          session.user.email?.split('@')[0] ||
+          'Creator'
+        );
 
       authListener =
         listenerResult?.data?.subscription || null;
