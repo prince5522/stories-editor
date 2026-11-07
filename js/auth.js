@@ -503,8 +503,9 @@
       session?.user &&
       !session.user.is_anonymous
     ) {
+      rememberOfflineAccess(username);
+
       showMessage(
-         rememberOfflineAccess(username);
         'Your account is ready. Opening Story Studio…',
         true
       );
