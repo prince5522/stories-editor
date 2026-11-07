@@ -1,13 +1,28 @@
+/* =====================================================
+   STORY STUDIO — SERVICE WORKER
+   Version: 27
 
-/* =========================================
-   CHANNEL STUDIO v26
-   COMPLETE OFFLINE CACHE
-   Planner folders + fresh planner scripts
-========================================= */
+   Features:
+   - Offline page support
+   - Automatic application updates
+   - Cache migration
+   - Network-first page loading
+   - Background asset refresh
+   - Offline fallback
+   - Notification click navigation
+   - Safe cache cleanup
+===================================================== */
 
-const CACHE = 'channel-studio-shell-v26';
+'use strict';
+
+/* =====================================================
+   CACHE CONFIGURATION
+===================================================== */
+
+const CACHE_VERSION = 'channel-studio-shell-v27';
 const CACHE_PREFIX = 'channel-studio-shell-';
-const FETCH_TIMEOUT = 6000;
+
+const FETCH_TIMEOUT = 8000;
 
 const PAGES = [
   './',
@@ -74,24 +89,31 @@ const OTHER_FILES = [
   'assets/icons/icon-512.png'
 ];
 
-const CORE = [
+const CORE_FILES = [
   ...PAGES,
   ...STYLES,
   ...SCRIPTS,
   ...OTHER_FILES
 ];
 
+/* =====================================================
+   HELPERS
+===================================================== */
+
+function makeURL(path) {
+  return new URL(path, self.registration.scope).href;
+}
+
 async function fetchWithTimeout(url) {
   const controller = new AbortController();
 
-  const timer = setTimeout(
-    () => controller.abort(),
-    FETCH_TIMEOUT
-  );
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, FETCH_TIMEOUT);
 
   try {
     return await fetch(url, {
-      cache: 'reload',
+      cache: 'no-store',
       signal: controller.signal
     });
   } finally {
@@ -99,18 +121,39 @@ async function fetchWithTimeout(url) {
   }
 }
 
-/* =========================================
+async function saveResponse(cache, request, response) {
+  if (!response || !response.ok) return;
+
+  try {
+    await cache.put(request, response.clone());
+  } catch (error) {
+    console.warn(
+      '[Story Studio] Could not cache resource:',
+      request.url,
+      error
+    );
+  }
+}
+
+/* =====================================================
    INSTALL
-========================================= */
+===================================================== */
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
-    const cache = await caches.open(CACHE);
+    const cache = await caches.open(CACHE_VERSION);
 
-    /* Preserve files from previous versions */
+    console.log(
+      '[Story Studio] Installing version 27...'
+    );
+
+    /* ---------------------------------------------
+       MIGRATE PREVIOUS CACHE CONTENT
+    --------------------------------------------- */
+
     const oldCaches = (await caches.keys()).filter(name =>
       name.startsWith(CACHE_PREFIX) &&
-      name !== CACHE
+      name !== CACHE_VERSION
     );
 
     for (const oldName of oldCaches) {
@@ -127,88 +170,133 @@ self.addEventListener('install', event => {
             if (response) {
               await cache.put(request, response);
             }
+
           } catch (error) {
             console.warn(
-              '[Channel Studio] Migration item failed:',
-              request.url,
-              error
+              '[Story Studio] Migration item skipped:',
+              request.url
             );
           }
         }
+
       } catch (error) {
         console.warn(
-          '[Channel Studio] Cache migration failed:',
+          '[Story Studio] Previous cache migration failed:',
+          oldName,
           error
         );
       }
     }
 
-    /* Refresh every core file independently */
-    await Promise.all(CORE.map(async path => {
-      const url = new URL(
-        path,
-        self.registration.scope
-      );
+    /* ---------------------------------------------
+       DOWNLOAD CORE APPLICATION FILES
+    --------------------------------------------- */
 
-      try {
-        const response = await fetchWithTimeout(url.href);
+    const results = await Promise.allSettled(
+      CORE_FILES.map(async path => {
+        const url = makeURL(path);
 
-        if (response && response.ok) {
-          await cache.put(url.href, response);
+        try {
+          const response = await fetchWithTimeout(url);
+
+          if (response && response.ok) {
+            await saveResponse(cache, url, response);
+          } else {
+            console.warn(
+              '[Story Studio] File unavailable:',
+              path
+            );
+          }
+
+        } catch (error) {
+          console.warn(
+            '[Story Studio] Using previous cached copy:',
+            path
+          );
         }
-      } catch (error) {
-        console.warn(
-          '[Channel Studio] Keeping cached file:',
-          path
-        );
-      }
-    }));
+      })
+    );
 
+    const successful = results.filter(
+      result => result.status === 'fulfilled'
+    ).length;
+
+    console.log(
+      `[Story Studio] Core cache processed: ${successful}/${CORE_FILES.length}`
+    );
+
+    /* Activate the new worker when installation completes. */
     await self.skipWaiting();
 
-    console.log('[Channel Studio] v26 installed');
   })());
 });
 
-/* =========================================
+/* =====================================================
    ACTIVATE
-========================================= */
+===================================================== */
 
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    const keys = await caches.keys();
+    const cacheNames = await caches.keys();
 
+    /* Delete only old Story Studio caches. */
     await Promise.all(
-      keys
+      cacheNames
         .filter(name =>
           name.startsWith(CACHE_PREFIX) &&
-          name !== CACHE
+          name !== CACHE_VERSION
         )
         .map(name => caches.delete(name))
     );
 
     await self.clients.claim();
 
-    console.log('[Channel Studio] v26 activated');
+    console.log(
+      '[Story Studio] Version 27 activated.'
+    );
+
+    /* Notify open application tabs. */
+    const clients = await self.clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    });
+
+    clients.forEach(client => {
+      client.postMessage({
+        type: 'STORY_STUDIO_UPDATED',
+        version: CACHE_VERSION
+      });
+    });
+
   })());
 });
 
-/* =========================================
-   MANUAL UPDATE SUPPORT
-========================================= */
+/* =====================================================
+   UPDATE MESSAGES
+===================================================== */
 
 self.addEventListener('message', event => {
-  if (event.data === 'SKIP_WAITING') {
+  const message = event.data;
+
+  if (message === 'SKIP_WAITING') {
     self.skipWaiting();
+    return;
+  }
+
+  if (message && message.type === 'GET_VERSION') {
+    event.source?.postMessage({
+      type: 'SERVICE_WORKER_VERSION',
+      version: CACHE_VERSION
+    });
   }
 });
 
-/* =========================================
+/* =====================================================
    OFFLINE FALLBACK
-========================================= */
+===================================================== */
 
 async function offlineResponse(request) {
-  const cache = await caches.open(CACHE);
+  const cache = await caches.open(CACHE_VERSION);
 
   if (request.mode === 'navigate') {
     const cachedPage = await cache.match(
@@ -218,27 +306,34 @@ async function offlineResponse(request) {
 
     if (cachedPage) return cachedPage;
 
-    const homePage = await cache.match('home.html');
+    const home = await cache.match(makeURL('home.html'));
 
-    if (homePage) return homePage;
+    if (home) return home;
 
-    const welcomePage = await cache.match('index.html');
+    const welcome = await cache.match(makeURL('index.html'));
 
-    if (welcomePage) return welcomePage;
+    if (welcome) return welcome;
 
     return new Response(
-      'Channel Studio is offline. Please open a page that has already been cached.',
+      '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline</title></head><body><h1>Story Studio is offline</h1><p>This page has not been saved for offline use yet. Reconnect to the internet and try again.</p></body></html>',
       {
         status: 503,
         headers: {
-          'Content-Type': 'text/plain; charset=utf-8'
+          'Content-Type': 'text/html; charset=utf-8'
         }
       }
     );
   }
 
+  const cachedResource = await cache.match(
+    request,
+    { ignoreSearch: true }
+  );
+
+  if (cachedResource) return cachedResource;
+
   return new Response(
-    'This resource is not available offline yet.',
+    'This resource is not available offline.',
     {
       status: 504,
       headers: {
@@ -248,9 +343,9 @@ async function offlineResponse(request) {
   );
 }
 
-/* =========================================
+/* =====================================================
    FETCH HANDLER
-========================================= */
+===================================================== */
 
 self.addEventListener('fetch', event => {
   const request = event.request;
@@ -259,28 +354,71 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(request.url);
 
+  /* Only handle files belonging to this application. */
   if (url.origin !== self.location.origin) return;
 
+  /* Do not interfere with partial media requests. */
   if (request.headers.has('range')) return;
 
   event.respondWith((async () => {
-    const cache = await caches.open(CACHE);
+    const cache = await caches.open(CACHE_VERSION);
 
-    try {
-      const cached = await cache.match(
-        request,
-        { ignoreSearch: true }
+    /* ---------------------------------------------
+       HTML PAGES — NETWORK FIRST
+    --------------------------------------------- */
+
+    if (request.mode === 'navigate') {
+      try {
+        const response = await fetchWithTimeout(request);
+
+        if (response && response.ok) {
+          await saveResponse(cache, request, response);
+          return response;
+        }
+
+      } catch (error) {
+        console.warn(
+          '[Story Studio] Page loaded from offline cache:',
+          url.pathname
+        );
+      }
+
+      return offlineResponse(request);
+    }
+
+    /* ---------------------------------------------
+       OTHER FILES — CACHE FIRST
+       Refresh cache in the background.
+    --------------------------------------------- */
+
+    const cached = await cache.match(
+      request,
+      { ignoreSearch: true }
+    );
+
+    if (cached) {
+      event.waitUntil(
+        fetchWithTimeout(request)
+          .then(response => {
+            return saveResponse(cache, request, response);
+          })
+          .catch(() => {
+            // Keep the existing offline copy.
+          })
       );
 
-      if (cached) return cached;
+      return cached;
+    }
 
-      const response = await fetch(request);
+    /* ---------------------------------------------
+       RESOURCE NOT CACHED — NETWORK
+    --------------------------------------------- */
+
+    try {
+      const response = await fetchWithTimeout(request);
 
       if (response && response.ok) {
-        await cache.put(
-          request,
-          response.clone()
-        );
+        await saveResponse(cache, request, response);
       }
 
       return response;
@@ -288,26 +426,46 @@ self.addEventListener('fetch', event => {
     } catch (error) {
       return offlineResponse(request);
     }
+
   })());
 });
 
-/* =========================================
+/* =====================================================
    NOTIFICATION CLICK
-========================================= */
+===================================================== */
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
 
-  const target =
-    event.notification.data &&
-    event.notification.data.url ||
-    'planner.html';
+  const requestedTarget =
+    event.notification.data?.url || 'planner.html';
 
   event.waitUntil((async () => {
-    const targetURL = new URL(
-      target,
-      self.registration.scope
-    );
+    let targetURL;
+
+    try {
+      targetURL = new URL(
+        requestedTarget,
+        self.registration.scope
+      );
+
+      /* Never navigate outside this app's origin. */
+      if (
+        targetURL.origin !== self.location.origin ||
+        !targetURL.href.startsWith(self.registration.scope)
+      ) {
+        targetURL = new URL(
+          'planner.html',
+          self.registration.scope
+        );
+      }
+
+    } catch (error) {
+      targetURL = new URL(
+        'planner.html',
+        self.registration.scope
+      );
+    }
 
     const windows = await self.clients.matchAll({
       type: 'window',
@@ -315,7 +473,10 @@ self.addEventListener('notificationclick', event => {
     });
 
     for (const client of windows) {
-      if ('focus' in client) {
+      if (
+        client.url.startsWith(self.registration.scope) &&
+        'focus' in client
+      ) {
         await client.focus();
 
         if ('navigate' in client) {
@@ -329,5 +490,6 @@ self.addEventListener('notificationclick', event => {
     if (self.clients.openWindow) {
       await self.clients.openWindow(targetURL.href);
     }
+
   })());
 });
