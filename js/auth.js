@@ -1,19 +1,12 @@
 
 /* =========================================
    STORY STUDIO AUTHENTICATION
-   Email + Password
-   Persistent Supabase session
-   Login page only
+   Email + Password + Username
+   Uses the shared Supabase Cloud system
 ========================================= */
 
 (() => {
   'use strict';
-
-  const PROJECT_URL =
-    'https://fkyihttehxinegibcwws.supabase.co';
-
-  const PUBLISHABLE_KEY =
-    'sb_publishable_N54NlBxYHQgpiKr7oy2oRQ_yfe_E1dV';
 
   const $ = id => document.getElementById(id);
 
@@ -27,12 +20,92 @@
   const formHeading = $('formHeading');
   const formDescription = $('formDescription');
   const accountSwitch = $('accountSwitch');
-  const switchModeButton = $('switchMode');
   const forgotButton = $('forgotPassword');
 
   let mode = 'login';
-  let client = null;
   let busy = false;
+  let client = null;
+  let cloud = null;
+  let usernameInput = null;
+
+  /* ---------------------------------------
+     LOAD SHARED CLOUD SYSTEM
+  --------------------------------------- */
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = () => reject(
+        new Error('Could not load ' + src)
+      );
+      document.head.appendChild(script);
+    });
+  }
+
+  async function initializeCloud() {
+    if (!window.supabase?.createClient) {
+      throw new Error('Supabase library could not load.');
+    }
+
+    if (!window.ChannelStudioCloud) {
+      await loadScript('js/supabase-cloud.js');
+    }
+
+    cloud = window.ChannelStudioCloud;
+
+    if (!cloud) {
+      throw new Error('Story Studio cloud system is unavailable.');
+    }
+
+    if (cloud.ready && typeof cloud.ready.then === 'function') {
+      await cloud.ready;
+    }
+
+    client = cloud.getClient();
+
+    if (!client) {
+      throw new Error('Could not initialize your account connection.');
+    }
+  }
+
+  /* ---------------------------------------
+     CREATE USERNAME FIELD
+  --------------------------------------- */
+
+  function createUsernameField() {
+    if (usernameInput) return;
+
+    const emailField = emailInput.closest('.field');
+
+    const field = document.createElement('div');
+    field.className = 'field';
+    field.id = 'usernameField';
+    field.hidden = true;
+
+    field.innerHTML = `
+      <label class="field-label" for="username">
+        Username
+      </label>
+      <div class="input-wrap">
+        <span class="field-icon" aria-hidden="true">@</span>
+        <input
+          id="username"
+          name="username"
+          type="text"
+          placeholder="Choose your username"
+          autocomplete="username"
+          minlength="3"
+          maxlength="30"
+        >
+      </div>
+    `;
+
+    emailField.parentNode.insertBefore(field, emailField);
+
+    usernameInput = $('username');
+  }
 
   /* ---------------------------------------
      MESSAGES
@@ -42,7 +115,6 @@
     message.textContent = text;
     message.className =
       'login-message' + (success ? ' success' : '');
-
     message.style.display = 'block';
   }
 
@@ -88,9 +160,16 @@
     clearMessage();
 
     const recovery = mode === 'recovery';
+    const signup = mode === 'signup';
 
     emailInput.closest('.field').hidden = recovery;
     forgotButton.hidden = mode !== 'login';
+
+    if (usernameInput) {
+      $('usernameField').hidden = !signup;
+      usernameInput.required = signup;
+      usernameInput.value = '';
+    }
 
     passwordInput.value = '';
 
@@ -111,7 +190,7 @@
       formHeading.textContent = 'Create account';
 
       formDescription.textContent =
-        'Create your Story Studio account and keep your workspace connected.';
+        'Choose your username and create your Story Studio account.';
 
       passwordInput.placeholder = 'At least 8 characters';
       passwordInput.autocomplete = 'new-password';
@@ -187,6 +266,11 @@
       return;
     }
 
+    if (!client) {
+      showMessage('Account service is still connecting. Try again.');
+      return;
+    }
+
     setLoading(true, 'Sending link…');
 
     try {
@@ -213,64 +297,24 @@
      ACCOUNT CREATION
   --------------------------------------- */
 
-  async function createAccount(email, password) {
+  async function createAccount(username, email, password) {
+    const result = await cloud.signUp(
+      username,
+      email,
+      password
+    );
+
+    if (result?.error) {
+      throw result.error;
+    }
+
     const {
       data: { session }
     } = await client.auth.getSession();
 
-    /*
-      If this browser already has the anonymous
-      Supabase identity used by the cloud library,
-      convert that identity to email/password.
-
-      This helps preserve its existing owner ID
-      and associated Ready-Made cloud episodes.
-    */
-
-    if (session?.user?.is_anonymous) {
-      const { data, error } =
-        await client.auth.updateUser({
-          email,
-          password
-        });
-
-      if (error) throw error;
-
-      if (data.user && !data.user.is_anonymous) {
-        showMessage(
-          'Your account is ready. Opening Story Studio…',
-          true
-        );
-
-        setTimeout(openHome, 700);
-        return;
-      }
-
+    if (session) {
       showMessage(
-        'Check your email to confirm your address. After confirmation, return and sign in.',
-        true
-      );
-
-      return;
-    }
-
-    /* Normal email/password registration */
-
-    const { data, error } =
-      await client.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo:
-            window.location.href.split('?')[0]
-        }
-      });
-
-    if (error) throw error;
-
-    if (data.session) {
-      showMessage(
-        'Account created successfully. Opening Story Studio…',
+        'Your account is ready. Opening Story Studio…',
         true
       );
 
@@ -299,7 +343,14 @@
 
     if (error) throw error;
 
-    showMessage('Signed in successfully. Welcome back!', true);
+    if (typeof cloud.refresh === 'function') {
+      await cloud.refresh();
+    }
+
+    showMessage(
+      'Signed in successfully. Welcome back!',
+      true
+    );
 
     setTimeout(openHome, 500);
   }
@@ -310,9 +361,7 @@
 
   async function updatePassword(password) {
     const { error } =
-      await client.auth.updateUser({
-        password
-      });
+      await client.auth.updateUser({ password });
 
     if (error) throw error;
 
@@ -331,12 +380,20 @@
   form.addEventListener('submit', async event => {
     event.preventDefault();
 
-    if (busy || !client) return;
+    if (busy || !client) {
+      if (!client) {
+        showMessage('Account service is connecting. Please try again.');
+      }
+      return;
+    }
 
     clearMessage();
 
     const email = emailInput.value.trim();
     const password = passwordInput.value;
+    const username = usernameInput
+      ? usernameInput.value.trim()
+      : '';
 
     if (mode !== 'recovery') {
       if (!email || !emailInput.checkValidity()) {
@@ -352,6 +409,20 @@
       return;
     }
 
+    if (mode === 'signup') {
+      if (username.length < 3 || username.length > 30) {
+        showMessage('Your username must be between 3 and 30 characters.');
+        usernameInput.focus();
+        return;
+      }
+
+      if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        showMessage('Use only letters, numbers and underscores in your username.');
+        usernameInput.focus();
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
@@ -359,7 +430,7 @@
         await signIn(email, password);
 
       } else if (mode === 'signup') {
-        await createAccount(email, password);
+        await createAccount(username, email, password);
 
       } else if (mode === 'recovery') {
         await updatePassword(password);
@@ -378,43 +449,16 @@
   });
 
   /* ---------------------------------------
-     INITIALIZE SUPABASE
+     INITIALIZE
   --------------------------------------- */
 
   async function initialize() {
-    if (!window.supabase?.createClient) {
-      showMessage(
-        'The login service could not load. Connect to the internet and refresh this page.'
-      );
-      return;
-    }
+    createUsernameField();
+    connectSwitchButton();
+    updateButtonText();
 
     try {
-      client = window.supabase.createClient(
-        PROJECT_URL,
-        PUBLISHABLE_KEY,
-        {
-          auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: true
-          }
-        }
-      );
-
-      /*
-        Detect password recovery links.
-      */
-
-      client.auth.onAuthStateChange((event) => {
-        if (event === 'PASSWORD_RECOVERY') {
-          setMode('recovery');
-          showMessage(
-            'Choose a new password for your account.',
-            true
-          );
-        }
-      });
+      await initializeCloud();
 
       const {
         data: { session },
@@ -423,12 +467,15 @@
 
       if (error) throw error;
 
-      /*
-        Existing permanent sessions go directly
-        to Home. Anonymous sessions remain on
-        the login screen so an email account can
-        be created or an existing account used.
-      */
+      client.auth.onAuthStateChange(event => {
+        if (event === 'PASSWORD_RECOVERY') {
+          setMode('recovery');
+          showMessage(
+            'Choose a new password for your account.',
+            true
+          );
+        }
+      });
 
       if (
         session?.user &&
@@ -448,20 +495,15 @@
       }
 
     } catch (error) {
-      console.error('Supabase initialization failed:', error);
+      console.error('Story Studio initialization:', error);
 
       showMessage(
-        'Could not connect to the login service. Please check your internet connection and try again.'
+        error.message ||
+        'Could not connect to the login service. Check your internet connection and refresh.'
       );
     }
   }
 
-  /* ---------------------------------------
-     START
-  --------------------------------------- */
-
-  connectSwitchButton();
-  updateButtonText();
   initialize();
 
 })();
