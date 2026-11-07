@@ -35,6 +35,7 @@
   function loadScript(src) {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
+
       script.src = src;
 
       script.onload = resolve;
@@ -53,9 +54,13 @@
 
   async function initializeCloud() {
 
-    // Local storage must exist before cloud starts.
+    // Ensure local storage exists first.
     if (!window.StudioStore) {
       await loadScript('js/storage.js');
+    }
+
+    if (!window.StudioStore) {
+      throw new Error('Local storage could not initialize.');
     }
 
     // Check Supabase library.
@@ -63,7 +68,7 @@
       throw new Error('Supabase library could not load.');
     }
 
-    // Load shared cloud system.
+    // Load the shared cloud system.
     if (!window.ChannelStudioCloud) {
       await loadScript('js/supabase-cloud.js');
     }
@@ -74,15 +79,31 @@
       throw new Error('Story Studio cloud system is unavailable.');
     }
 
-    // Wait for cloud initialization.
-    if (cloud.ready && typeof cloud.ready.then === 'function') {
-      await cloud.ready;
-    }
-
+    // IMPORTANT:
+    // Get the client before waiting for cloud backup.
     client = cloud.getClient();
 
     if (!client) {
       throw new Error('Could not initialize your account connection.');
+    }
+
+    // Wait for cloud initialization.
+    if (cloud.ready && typeof cloud.ready.then === 'function') {
+      const result = await cloud.ready;
+
+      if (result && result.online === false) {
+        console.warn(
+          'Story Studio cloud initialization:',
+          result.error || 'Cloud is not connected.'
+        );
+      }
+    }
+
+    // Confirm the client is still available.
+    client = cloud.getClient();
+
+    if (!client) {
+      throw new Error('Account connection is unavailable.');
     }
   }
 
@@ -96,6 +117,7 @@
     const emailField = emailInput.closest('.field');
 
     const field = document.createElement('div');
+
     field.className = 'field';
     field.id = 'usernameField';
     field.hidden = true;
@@ -152,6 +174,7 @@
     busy = loading;
 
     submitButton.disabled = loading;
+
     runway.classList.toggle('loading', loading);
 
     if (loading) {
@@ -291,7 +314,7 @@
     }
 
     if (!client) {
-      showMessage('Account service is still connecting. Try again.');
+      showMessage('Account service is unavailable. Refresh the page.');
       return;
     }
 
@@ -311,7 +334,9 @@
       );
 
     } catch (error) {
-      showMessage(error.message || 'Could not send the reset email.');
+      showMessage(
+        error.message || 'Could not send the reset email.'
+      );
 
     } finally {
       setLoading(false);
@@ -343,8 +368,6 @@
 
     if (error) throw error;
 
-    // Do not mistake an anonymous guest session
-    // for a successfully registered account.
     if (session?.user && !session.user.is_anonymous) {
       showMessage(
         'Your account is ready. Opening Story Studio…',
@@ -360,6 +383,7 @@
       );
 
       setMode('login');
+
       emailInput.value = email;
     }
   }
@@ -369,16 +393,12 @@
   --------------------------------------- */
 
   async function signIn(email, password) {
-    const { error } =
-      await client.auth.signInWithPassword({
-        email,
-        password
-      });
+    const result = await cloud.signIn(email, password);
 
-    if (error) throw error;
-
-    if (typeof cloud.refresh === 'function') {
-      await cloud.refresh();
+    if (!result || result.success !== true) {
+      throw new Error(
+        result?.error || 'Sign in failed. Please try again.'
+      );
     }
 
     showMessage(
@@ -414,10 +434,12 @@
   form.addEventListener('submit', async event => {
     event.preventDefault();
 
-    if (busy || !client) {
-      if (!client) {
-        showMessage('Account service is connecting. Please try again.');
-      }
+    if (busy) return;
+
+    if (!client || !cloud) {
+      showMessage(
+        'Account service is unavailable. Please refresh the page.'
+      );
 
       return;
     }
@@ -440,14 +462,20 @@
     }
 
     if (!password || password.length < 8) {
-      showMessage('Your password must contain at least 8 characters.');
+      showMessage(
+        'Your password must contain at least 8 characters.'
+      );
+
       passwordInput.focus();
       return;
     }
 
     if (mode === 'signup') {
       if (username.length < 3 || username.length > 20) {
-        showMessage('Your username must be between 3 and 20 characters.');
+        showMessage(
+          'Your username must be between 3 and 20 characters.'
+        );
+
         usernameInput.focus();
         return;
       }
@@ -476,7 +504,10 @@
       }
 
     } catch (error) {
-      console.error('Story Studio authentication:', error);
+      console.error(
+        'Story Studio authentication:',
+        error
+      );
 
       showMessage(
         error.message || 'Something went wrong. Please try again.'
@@ -493,8 +524,12 @@
 
   async function initialize() {
     createUsernameField();
+
     connectSwitchButton();
+
     updateButtonText();
+
+    setLoading(true, 'Connecting…');
 
     try {
       await initializeCloud();
@@ -535,8 +570,15 @@
         );
       }
 
+      setLoading(false);
+
     } catch (error) {
-      console.error('Story Studio initialization:', error);
+      console.error(
+        'Story Studio initialization:',
+        error
+      );
+
+      setLoading(false);
 
       showMessage(
         error.message ||
