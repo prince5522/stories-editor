@@ -1,3 +1,4 @@
+
 /* =========================================
    STORY STUDIO AUTHENTICATION
    Email + Password + Username
@@ -28,25 +29,41 @@
   let usernameInput = null;
 
   /* ---------------------------------------
-     LOAD SHARED CLOUD SYSTEM
+     SCRIPT LOADER
   --------------------------------------- */
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
       script.src = src;
+
       script.onload = resolve;
-      script.onerror = () =>
+
+      script.onerror = () => {
         reject(new Error('Could not load ' + src));
+      };
+
       document.head.appendChild(script);
     });
   }
 
+  /* ---------------------------------------
+     LOAD SHARED CLOUD SYSTEM
+  --------------------------------------- */
+
   async function initializeCloud() {
+
+    // Local storage must exist before cloud starts.
+    if (!window.StudioStore) {
+      await loadScript('js/storage.js');
+    }
+
+    // Check Supabase library.
     if (!window.supabase?.createClient) {
       throw new Error('Supabase library could not load.');
     }
 
+    // Load shared cloud system.
     if (!window.ChannelStudioCloud) {
       await loadScript('js/supabase-cloud.js');
     }
@@ -57,6 +74,7 @@
       throw new Error('Story Studio cloud system is unavailable.');
     }
 
+    // Wait for cloud initialization.
     if (cloud.ready && typeof cloud.ready.then === 'function') {
       await cloud.ready;
     }
@@ -86,8 +104,10 @@
       <label class="field-label" for="username">
         Username
       </label>
+
       <div class="input-wrap">
         <span class="field-icon" aria-hidden="true">@</span>
+
         <input
           id="username"
           name="username"
@@ -101,6 +121,7 @@
     `;
 
     emailField.parentNode.insertBefore(field, emailField);
+
     usernameInput = $('username');
   }
 
@@ -110,8 +131,10 @@
 
   function showMessage(text, success = false) {
     message.textContent = text;
+
     message.className =
       'login-message' + (success ? ' success' : '');
+
     message.style.display = 'block';
   }
 
@@ -154,12 +177,14 @@
 
   function setMode(nextMode) {
     mode = nextMode;
+
     clearMessage();
 
     const recovery = mode === 'recovery';
     const signup = mode === 'signup';
 
     emailInput.closest('.field').hidden = recovery;
+
     forgotButton.hidden = mode !== 'login';
 
     if (usernameInput) {
@@ -180,6 +205,7 @@
       passwordInput.autocomplete = 'current-password';
 
       accountSwitch.hidden = false;
+
       accountSwitch.innerHTML =
         'No account yet? <button id="switchMode" type="button">Create one</button>';
 
@@ -193,6 +219,7 @@
       passwordInput.autocomplete = 'new-password';
 
       accountSwitch.hidden = false;
+
       accountSwitch.innerHTML =
         'Already have an account? <button id="switchMode" type="button">Sign in</button>';
 
@@ -285,6 +312,7 @@
 
     } catch (error) {
       showMessage(error.message || 'Could not send the reset email.');
+
     } finally {
       setLoading(false);
     }
@@ -301,8 +329,6 @@
       password
     );
 
-    // Correctly handle the success/error format
-    // returned by the shared Supabase Cloud system.
     if (!result || result.success !== true) {
       throw new Error(
         result?.error ||
@@ -317,8 +343,8 @@
 
     if (error) throw error;
 
-    // Never treat an anonymous guest session
-    // as a successfully registered account.
+    // Do not mistake an anonymous guest session
+    // for a successfully registered account.
     if (session?.user && !session.user.is_anonymous) {
       showMessage(
         'Your account is ready. Opening Story Studio…',
@@ -392,6 +418,7 @@
       if (!client) {
         showMessage('Account service is connecting. Please try again.');
       }
+
       return;
     }
 
@@ -399,6 +426,7 @@
 
     const email = emailInput.value.trim();
     const password = passwordInput.value;
+
     const username = usernameInput
       ? usernameInput.value.trim()
       : '';
@@ -428,6 +456,7 @@
         showMessage(
           'Use only letters, numbers and underscores in your username.'
         );
+
         usernameInput.focus();
         return;
       }
