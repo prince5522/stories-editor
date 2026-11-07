@@ -534,13 +534,14 @@
       password
     );
 
-    if (!result || result.success !== true) {
+   if (!result || result.success !== true) {
       throw new Error(
         result?.error ||
         'Sign in failed. Please try again.'
-         rememberOfflineAccess(email.split('@')[0]);
       );
     }
+
+    rememberOfflineAccess(email.split('@')[0]);
 
     showMessage(
       'Signed in successfully. Welcome back!',
