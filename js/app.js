@@ -148,36 +148,127 @@
   /* HOME */
 
   function refreshHome() {
-    const stories = get('stories');
-    const tasks = get('tasks').filter(task => !task.done);
-    const channels = get('channels');
+  const stories = get('stories');
+  const allTasks = get('tasks');
+  const channels = get('channels');
 
-    if ($('storyCount')) {
-      $('storyCount').textContent = stories.length;
-    }
+  // Keep the dashboard statistics accurate.
+  const pendingTasks = allTasks.filter(task => !task.done);
 
-    if ($('taskCount')) {
-      $('taskCount').textContent = tasks.length;
-    }
-
-    if ($('channelCount')) {
-      $('channelCount').textContent = channels.length;
-    }
-
-    renderList(
-      'homeTasks',
-      'tasks',
-      (task, index) => item(
-        task.title,
-        `${task.date || ''} · ${task.type || 'Task'}`,
-        task.notes,
-        '',
-        'tasks',
-        index
-      ),
-      'No tasks yet. Add your first posting reminder in Planner.'
-    );
+  if ($('storyCount')) {
+    $('storyCount').textContent = stories.length;
   }
+
+  if ($('taskCount')) {
+    $('taskCount').textContent = pendingTasks.length;
+  }
+
+  if ($('channelCount')) {
+    $('channelCount').textContent = channels.length;
+  }
+
+  // Keep each task's original storage index for safe deletion.
+  const tasks = allTasks
+    .map((task, index) => ({
+      ...task,
+      _originalIndex: index,
+      _scheduledTime: task.date
+        ? new Date(task.date).getTime()
+        : NaN
+    }))
+    .filter(task => !task.done);
+
+  // Tasks with dates appear first, ordered by scheduled time.
+  // Undated weekly tasks follow them.
+  tasks.sort((a, b) => {
+    const aHasDate = Number.isFinite(a._scheduledTime);
+    const bHasDate = Number.isFinite(b._scheduledTime);
+
+    if (aHasDate && bHasDate) {
+      return a._scheduledTime - b._scheduledTime;
+    }
+
+    if (aHasDate) return -1;
+    if (bHasDate) return 1;
+
+    return a._originalIndex - b._originalIndex;
+  });
+
+  const previewTasks = tasks.slice(0, 5);
+  const container = $('homeTasks');
+
+  if (!container) return;
+
+  if (!previewTasks.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        No pending tasks yet. Add your first posting reminder in Planner.
+      </div>
+    `;
+    return;
+  }
+
+  const now = Date.now();
+
+  container.innerHTML = previewTasks.map(task => {
+    const days = Array.isArray(task.days)
+      ? task.days.filter(Boolean)
+      : [];
+
+    let schedule = 'No schedule';
+
+    if (days.length) {
+      schedule = days.join(', ');
+
+      if (task.repeatWeekly) {
+        schedule += ' · Repeats weekly';
+      }
+    } else if (task.date) {
+      const date = new Date(task.date);
+
+      schedule = Number.isNaN(date.getTime())
+        ? String(task.date)
+        : date.toLocaleString();
+    }
+
+    const overdue =
+      Number.isFinite(task._scheduledTime) &&
+      task._scheduledTime < now;
+
+    const status = overdue
+      ? '⚠️ Overdue'
+      : '⏳ Pending';
+
+    return `
+      <article class="list-item">
+        <h3>${esc(task.title || 'Untitled task')}</h3>
+
+        <p>
+          ${esc(schedule)}
+          · ${esc(task.type || 'Task')}
+        </p>
+
+        <p class="small muted">
+          ${status}
+        </p>
+
+        ${task.notes
+          ? `<p class="small muted">${esc(task.notes)}</p>`
+          : ''
+        }
+
+        <div class="item-actions">
+          <button
+            class="button ghost"
+            data-home-done="${task._originalIndex}"
+            type="button">
+            Mark complete
+          </button>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
 
   /* STORIES */
 
