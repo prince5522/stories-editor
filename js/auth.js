@@ -1,4 +1,3 @@
-
 /* =========================================
    STORY STUDIO AUTHENTICATION
    Email + Password + Username
@@ -37,9 +36,8 @@
       const script = document.createElement('script');
       script.src = src;
       script.onload = resolve;
-      script.onerror = () => reject(
-        new Error('Could not load ' + src)
-      );
+      script.onerror = () =>
+        reject(new Error('Could not load ' + src));
       document.head.appendChild(script);
     });
   }
@@ -97,13 +95,12 @@
           placeholder="Choose your username"
           autocomplete="username"
           minlength="3"
-          maxlength="30"
+          maxlength="20"
         >
       </div>
     `;
 
     emailField.parentNode.insertBefore(field, emailField);
-
     usernameInput = $('username');
   }
 
@@ -304,21 +301,32 @@
       password
     );
 
-    if (result?.error) {
-      throw result.error;
+    // Correctly handle the success/error format
+    // returned by the shared Supabase Cloud system.
+    if (!result || result.success !== true) {
+      throw new Error(
+        result?.error ||
+        'Account creation failed. Please try again.'
+      );
     }
 
     const {
-      data: { session }
+      data: { session },
+      error
     } = await client.auth.getSession();
 
-    if (session) {
+    if (error) throw error;
+
+    // Never treat an anonymous guest session
+    // as a successfully registered account.
+    if (session?.user && !session.user.is_anonymous) {
       showMessage(
         'Your account is ready. Opening Story Studio…',
         true
       );
 
       setTimeout(openHome, 700);
+
     } else {
       showMessage(
         'Account created. Check your email for the confirmation link, then return here to sign in.',
@@ -410,14 +418,16 @@
     }
 
     if (mode === 'signup') {
-      if (username.length < 3 || username.length > 30) {
-        showMessage('Your username must be between 3 and 30 characters.');
+      if (username.length < 3 || username.length > 20) {
+        showMessage('Your username must be between 3 and 20 characters.');
         usernameInput.focus();
         return;
       }
 
       if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-        showMessage('Use only letters, numbers and underscores in your username.');
+        showMessage(
+          'Use only letters, numbers and underscores in your username.'
+        );
         usernameInput.focus();
         return;
       }
@@ -470,6 +480,7 @@
       client.auth.onAuthStateChange(event => {
         if (event === 'PASSWORD_RECOVERY') {
           setMode('recovery');
+
           showMessage(
             'Choose a new password for your account.',
             true
@@ -488,6 +499,7 @@
 
       if (window.location.search.includes('type=recovery')) {
         setMode('recovery');
+
         showMessage(
           'Choose a new password for your account.',
           true
