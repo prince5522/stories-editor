@@ -839,6 +839,7 @@
   'use strict';
 
   const loginPage = 'login.html';
+  const OFFLINE_AUTH_KEY = 'channelStudio.authenticated';
 
   function redirectToLogin() {
     window.location.replace(loginPage);
@@ -849,7 +850,9 @@
       const script = document.createElement('script');
       script.src = src;
       script.onload = resolve;
-      script.onerror = () => reject(new Error('Could not load ' + src));
+      script.onerror = () => reject(
+        new Error('Could not load ' + src)
+      );
       document.body.appendChild(script);
     });
   }
@@ -857,45 +860,72 @@
   try {
     const cloud = window.ChannelStudioCloud;
 
-    if (!cloud) {
-      throw new Error('Account service is unavailable.');
+    let user = null;
+    let cloudAvailable = false;
+
+    if (cloud) {
+      try {
+        const result = cloud.ready
+          ? await cloud.ready
+          : null;
+
+        cloudAvailable = result?.online !== false;
+
+        if (cloudAvailable) {
+          user = await cloud.getUser();
+        }
+      } catch (error) {
+        console.warn(
+          'Cloud unavailable. Checking local access.',
+          error
+        );
+      }
     }
 
-    if (cloud.ready) {
-      await cloud.ready;
-    }
+    const registeredUser =
+      user && user.is_anonymous !== true;
 
-    const user = await Promise.resolve(cloud.getUser());
+    const offlineAccess =
+      !registeredUser &&
+      localStorage.getItem(OFFLINE_AUTH_KEY) === '1';
 
-    // Anonymous sessions are not permanent registered accounts.
-    if (!user || user.is_anonymous === true) {
+    if (!registeredUser && !offlineAccess) {
       redirectToLogin();
       return;
     }
 
     let username = '';
 
-    if (typeof cloud.getUsername === 'function') {
-      username = await Promise.resolve(cloud.getUsername()) || '';
-    }
+    if (registeredUser) {
+      if (typeof cloud.getUsername === 'function') {
+        username = await Promise.resolve(
+          cloud.getUsername()
+        ) || '';
+      }
 
-    if (!username && user.user_metadata) {
-      username =
-        user.user_metadata.username ||
-        user.user_metadata.name ||
-        '';
-    }
+      if (!username && user.user_metadata) {
+        username =
+          user.user_metadata.username ||
+          user.user_metadata.name ||
+          '';
+      }
 
-    if (!username && user.email) {
-      username = user.email.split('@')[0];
+      if (!username && user.email) {
+        username = user.email.split('@')[0];
+      }
     }
 
     if (!username) {
-      username = 'Prince';
+      username = localStorage.getItem(
+        'channelStudio.username'
+      ) || 'Creator';
     }
 
-    const usernameElement = document.getElementById('accountUsername');
-    const avatarElement = document.getElementById('accountAvatar');
+    const usernameElement =
+      document.getElementById('accountUsername');
+
+    const avatarElement =
+      document.getElementById('accountAvatar');
 
     if (usernameElement) {
       usernameElement.textContent = username;
@@ -912,12 +942,14 @@
         .join('');
 
       avatarElement.textContent = initials || 'CS';
-      avatarElement.title = username + ' — Account settings';
-      avatarElement.setAttribute('aria-label', username + ' account settings');
+      avatarElement.title =
+        username + ' — Account settings';
+      avatarElement.setAttribute(
+        'aria-label',
+        username + ' account settings'
+      );
     }
 
-    // Load the existing application scripts in their original order.
-    // storage.js is already loaded above before the cloud system.
     const applicationScripts = [
       'js/themes.js',
       'js/transitions.js',
@@ -932,15 +964,22 @@
       await loadScript(src);
     }
 
-    // Show the dashboard after account verification and script loading.
     document.body.style.visibility = 'visible';
 
+    if (offlineAccess) {
+      console.info(
+        'Story Studio opened in local offline mode.'
+      );
+    }
+
   } catch (error) {
-    console.error('Channel Studio account startup error:', error);
-    redirectToLogin();
+    console.error(
+      'Channel Studio startup error:',
+      error
+    );
+
+    // Do not hide the page if cloud services fail.
+    document.body.style.visibility = 'visible';
   }
 })();
 </script>
-
-</body>
-</html>
