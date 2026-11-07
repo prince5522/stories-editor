@@ -3,7 +3,7 @@
    STORY STUDIO AUTHENTICATION
    Email + Password + Username
    Uses the shared Supabase Cloud system
-========================================= */
+   ========================================= */
 
 (() => {
   'use strict';
@@ -21,12 +21,44 @@
   const formDescription = $('formDescription');
   const accountSwitch = $('accountSwitch');
   const forgotButton = $('forgotPassword');
+  const togglePassword = $('togglePassword');
 
   let mode = 'login';
   let busy = false;
   let client = null;
   let cloud = null;
   let usernameInput = null;
+  let authListener = null;
+
+  /* ---------------------------------------
+     CHECK REQUIRED HTML ELEMENTS
+  --------------------------------------- */
+
+  function validatePage() {
+    const required = {
+      loginForm: form,
+      email: emailInput,
+      password: passwordInput,
+      submitButton: submitButton,
+      runway: runway,
+      loginMessage: message,
+      formHeading: formHeading,
+      formDescription: formDescription,
+      accountSwitch: accountSwitch,
+      forgotPassword: forgotButton,
+      togglePassword: togglePassword
+    };
+
+    const missing = Object.keys(required)
+      .filter(id => !required[id]);
+
+    if (missing.length) {
+      throw new Error(
+        'Login page is missing these elements: ' +
+        missing.join(', ')
+      );
+    }
+  }
 
   /* ---------------------------------------
      SCRIPT LOADER
@@ -34,17 +66,43 @@
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
+      const existing = Array.from(
+        document.scripts
+      ).find(script => script.src === new URL(
+        src,
+        window.location.href
+      ).href);
 
-      script.src = src;
+      if (existing && existing.dataset.loaded === 'true') {
+        resolve();
+        return;
+      }
 
-      script.onload = resolve;
+      const script = existing || document.createElement('script');
 
-      script.onerror = () => {
+      if (!existing) {
+        script.src = src;
+        script.async = true;
+        document.head.appendChild(script);
+      }
+
+      script.addEventListener('load', () => {
+        script.dataset.loaded = 'true';
+        resolve();
+      }, { once: true });
+
+      script.addEventListener('error', () => {
         reject(new Error('Could not load ' + src));
-      };
+      }, { once: true });
 
-      document.head.appendChild(script);
+      if (
+        existing &&
+        window.StudioStore &&
+        window.supabase?.createClient &&
+        window.ChannelStudioCloud
+      ) {
+        resolve();
+      }
     });
   }
 
@@ -53,22 +111,31 @@
   --------------------------------------- */
 
   async function initializeCloud() {
-
-    // Ensure local storage exists first.
+    // 1. Ensure local storage is available.
     if (!window.StudioStore) {
       await loadScript('js/storage.js');
     }
 
     if (!window.StudioStore) {
-      throw new Error('Local storage could not initialize.');
+      throw new Error(
+        'Local storage could not initialize.'
+      );
     }
 
-    // Check Supabase library.
+    // 2. Ensure Supabase library is available.
     if (!window.supabase?.createClient) {
-      throw new Error('Supabase library could not load.');
+      await loadScript(
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
+      );
     }
 
-    // Load the shared cloud system.
+    if (!window.supabase?.createClient) {
+      throw new Error(
+        'Supabase library could not load.'
+      );
+    }
+
+    // 3. Load the shared cloud system.
     if (!window.ChannelStudioCloud) {
       await loadScript('js/supabase-cloud.js');
     }
@@ -76,35 +143,37 @@
     cloud = window.ChannelStudioCloud;
 
     if (!cloud) {
-      throw new Error('Story Studio cloud system is unavailable.');
+      throw new Error(
+        'Story Studio cloud system is unavailable.'
+      );
     }
 
-    // IMPORTANT:
-    // Get the client before waiting for cloud backup.
-    client = cloud.getClient();
-
-    if (!client) {
-      throw new Error('Could not initialize your account connection.');
-    }
-
-    // Wait for cloud initialization.
-    if (cloud.ready && typeof cloud.ready.then === 'function') {
+    // 4. IMPORTANT:
+    // Wait for cloud initialization BEFORE getting its client.
+    if (
+      cloud.ready &&
+      typeof cloud.ready.then === 'function'
+    ) {
       const result = await cloud.ready;
 
-      if (result && result.online === false) {
-        console.warn(
-          'Story Studio cloud initialization:',
-          result.error || 'Cloud is not connected.'
+      if (result?.online === false) {
+        throw new Error(
+          result.error ||
+          'Could not connect to the account service.'
         );
       }
     }
 
-    // Confirm the client is still available.
+    // 5. Now the client should be available.
     client = cloud.getClient();
 
     if (!client) {
-      throw new Error('Account connection is unavailable.');
+      throw new Error(
+        'Could not initialize your account connection.'
+      );
     }
+
+    return client;
   }
 
   /* ---------------------------------------
@@ -115,6 +184,12 @@
     if (usernameInput) return;
 
     const emailField = emailInput.closest('.field');
+
+    if (!emailField || !emailField.parentNode) {
+      throw new Error(
+        'Could not locate the email input field.'
+      );
+    }
 
     const field = document.createElement('div');
 
@@ -138,11 +213,15 @@
           autocomplete="username"
           minlength="3"
           maxlength="20"
+          pattern="[a-zA-Z0-9_]+"
         >
       </div>
     `;
 
-    emailField.parentNode.insertBefore(field, emailField);
+    emailField.parentNode.insertBefore(
+      field,
+      emailField
+    );
 
     usernameInput = $('username');
   }
@@ -155,7 +234,8 @@
     message.textContent = text;
 
     message.className =
-      'login-message' + (success ? ' success' : '');
+      'login-message' +
+      (success ? ' success' : '');
 
     message.style.display = 'block';
   }
@@ -175,10 +255,14 @@
 
     submitButton.disabled = loading;
 
-    runway.classList.toggle('loading', loading);
+    runway.classList.toggle(
+      'loading',
+      loading
+    );
 
     if (loading) {
-      submitButton.textContent = text || 'Please wait…';
+      submitButton.textContent =
+        text || 'Please wait…';
     } else {
       updateButtonText();
     }
@@ -199,6 +283,12 @@
   --------------------------------------- */
 
   function setMode(nextMode) {
+    if (
+      !['login', 'signup', 'recovery'].includes(nextMode)
+    ) {
+      return;
+    }
+
     mode = nextMode;
 
     clearMessage();
@@ -238,7 +328,9 @@
       formDescription.textContent =
         'Choose your username and create your Story Studio account.';
 
-      passwordInput.placeholder = 'At least 8 characters';
+      passwordInput.placeholder =
+        'At least 8 characters';
+
       passwordInput.autocomplete = 'new-password';
 
       accountSwitch.hidden = false;
@@ -252,7 +344,9 @@
       formDescription.textContent =
         'Choose a new password for your Story Studio account.';
 
-      passwordInput.placeholder = 'Enter your new password';
+      passwordInput.placeholder =
+        'Enter your new password';
+
       passwordInput.autocomplete = 'new-password';
 
       accountSwitch.hidden = true;
@@ -268,7 +362,11 @@
     if (!button) return;
 
     button.addEventListener('click', () => {
-      setMode(mode === 'login' ? 'signup' : 'login');
+      setMode(
+        mode === 'login'
+          ? 'signup'
+          : 'login'
+      );
     });
   }
 
@@ -284,15 +382,17 @@
      PASSWORD VISIBILITY
   --------------------------------------- */
 
-  $('togglePassword').addEventListener('click', () => {
-    const visible = passwordInput.type === 'text';
+  togglePassword.addEventListener('click', () => {
+    const visible =
+      passwordInput.type === 'text';
 
-    passwordInput.type = visible ? 'password' : 'text';
+    passwordInput.type =
+      visible ? 'password' : 'text';
 
-    $('togglePassword').textContent =
+    togglePassword.textContent =
       visible ? '◉' : '◎';
 
-    $('togglePassword').setAttribute(
+    togglePassword.setAttribute(
       'aria-label',
       visible ? 'Show password' : 'Hide password'
     );
@@ -302,52 +402,73 @@
      PASSWORD RECOVERY
   --------------------------------------- */
 
-  forgotButton.addEventListener('click', async () => {
-    clearMessage();
+  forgotButton.addEventListener(
+    'click',
+    async () => {
+      if (busy) return;
 
-    const email = emailInput.value.trim();
+      clearMessage();
 
-    if (!email || !emailInput.checkValidity()) {
-      showMessage('Enter your account email first.');
-      emailInput.focus();
-      return;
+      const email = emailInput.value.trim();
+
+      if (
+        !email ||
+        !emailInput.checkValidity()
+      ) {
+        showMessage(
+          'Enter your account email first.'
+        );
+
+        emailInput.focus();
+        return;
+      }
+
+      if (!client) {
+        showMessage(
+          'Account service is unavailable. Refresh the page.'
+        );
+
+        return;
+      }
+
+      setLoading(true, 'Sending link…');
+
+      try {
+        const result = await cloud.resetPassword(email);
+
+        if (!result?.success) {
+          throw new Error(
+            result?.error ||
+            'Could not send the reset email.'
+          );
+        }
+
+        showMessage(
+          'If this email belongs to an account, a password reset link has been sent. Check your inbox.',
+          true
+        );
+
+      } catch (error) {
+        showMessage(
+          error.message ||
+          'Could not send the reset email.'
+        );
+
+      } finally {
+        setLoading(false);
+      }
     }
-
-    if (!client) {
-      showMessage('Account service is unavailable. Refresh the page.');
-      return;
-    }
-
-    setLoading(true, 'Sending link…');
-
-    try {
-      const { error } =
-        await client.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.href.split('?')[0]
-        });
-
-      if (error) throw error;
-
-      showMessage(
-        'If this email belongs to an account, a password reset link has been sent. Check your inbox.',
-        true
-      );
-
-    } catch (error) {
-      showMessage(
-        error.message || 'Could not send the reset email.'
-      );
-
-    } finally {
-      setLoading(false);
-    }
-  });
+  );
 
   /* ---------------------------------------
      ACCOUNT CREATION
   --------------------------------------- */
 
-  async function createAccount(username, email, password) {
+  async function createAccount(
+    username,
+    email,
+    password
+  ) {
     const result = await cloud.signUp(
       username,
       email,
@@ -368,13 +489,16 @@
 
     if (error) throw error;
 
-    if (session?.user && !session.user.is_anonymous) {
+    if (
+      session?.user &&
+      !session.user.is_anonymous
+    ) {
       showMessage(
         'Your account is ready. Opening Story Studio…',
         true
       );
 
-      setTimeout(openHome, 700);
+      window.setTimeout(openHome, 700);
 
     } else {
       showMessage(
@@ -393,11 +517,15 @@
   --------------------------------------- */
 
   async function signIn(email, password) {
-    const result = await cloud.signIn(email, password);
+    const result = await cloud.signIn(
+      email,
+      password
+    );
 
     if (!result || result.success !== true) {
       throw new Error(
-        result?.error || 'Sign in failed. Please try again.'
+        result?.error ||
+        'Sign in failed. Please try again.'
       );
     }
 
@@ -406,7 +534,7 @@
       true
     );
 
-    setTimeout(openHome, 500);
+    window.setTimeout(openHome, 500);
   }
 
   /* ---------------------------------------
@@ -414,124 +542,151 @@
   --------------------------------------- */
 
   async function updatePassword(password) {
-    const { error } =
-      await client.auth.updateUser({ password });
+    const result = await cloud.changePassword(password);
 
-    if (error) throw error;
+    if (!result?.success) {
+      throw new Error(
+        result?.error ||
+        'Could not update your password.'
+      );
+    }
 
     showMessage(
       'Password updated successfully. Opening Story Studio…',
       true
     );
 
-    setTimeout(openHome, 700);
+    window.setTimeout(openHome, 700);
   }
 
   /* ---------------------------------------
      FORM SUBMISSION
   --------------------------------------- */
 
-  form.addEventListener('submit', async event => {
-    event.preventDefault();
+  form.addEventListener(
+    'submit',
+    async event => {
+      event.preventDefault();
 
-    if (busy) return;
+      if (busy) return;
 
-    if (!client || !cloud) {
-      showMessage(
-        'Account service is unavailable. Please refresh the page.'
-      );
-
-      return;
-    }
-
-    clearMessage();
-
-    const email = emailInput.value.trim();
-    const password = passwordInput.value;
-
-    const username = usernameInput
-      ? usernameInput.value.trim()
-      : '';
-
-    if (mode !== 'recovery') {
-      if (!email || !emailInput.checkValidity()) {
-        showMessage('Enter a valid email address.');
-        emailInput.focus();
-        return;
-      }
-    }
-
-    if (!password || password.length < 8) {
-      showMessage(
-        'Your password must contain at least 8 characters.'
-      );
-
-      passwordInput.focus();
-      return;
-    }
-
-    if (mode === 'signup') {
-      if (username.length < 3 || username.length > 20) {
+      if (!client || !cloud) {
         showMessage(
-          'Your username must be between 3 and 20 characters.'
+          'Account service is unavailable. Please refresh the page.'
         );
 
-        usernameInput.focus();
         return;
       }
 
-      if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      clearMessage();
+
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      const username = usernameInput
+        ? usernameInput.value.trim()
+        : '';
+
+      if (mode !== 'recovery') {
+        if (
+          !email ||
+          !emailInput.checkValidity()
+        ) {
+          showMessage(
+            'Enter a valid email address.'
+          );
+
+          emailInput.focus();
+          return;
+        }
+      }
+
+      if (
+        !password ||
+        password.length < 8
+      ) {
         showMessage(
-          'Use only letters, numbers and underscores in your username.'
+          'Your password must contain at least 8 characters.'
         );
 
-        usernameInput.focus();
+        passwordInput.focus();
         return;
       }
-    }
 
-    setLoading(true);
+      if (mode === 'signup') {
+        if (
+          username.length < 3 ||
+          username.length > 20
+        ) {
+          showMessage(
+            'Your username must be between 3 and 20 characters.'
+          );
 
-    try {
-      if (mode === 'login') {
-        await signIn(email, password);
+          usernameInput.focus();
+          return;
+        }
 
-      } else if (mode === 'signup') {
-        await createAccount(username, email, password);
+        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+          showMessage(
+            'Use only letters, numbers and underscores in your username.'
+          );
 
-      } else if (mode === 'recovery') {
-        await updatePassword(password);
+          usernameInput.focus();
+          return;
+        }
       }
 
-    } catch (error) {
-      console.error(
-        'Story Studio authentication:',
-        error
-      );
+      setLoading(true);
 
-      showMessage(
-        error.message || 'Something went wrong. Please try again.'
-      );
+      try {
+        if (mode === 'login') {
+          await signIn(email, password);
 
-    } finally {
-      setLoading(false);
+        } else if (mode === 'signup') {
+          await createAccount(
+            username,
+            email,
+            password
+          );
+
+        } else if (mode === 'recovery') {
+          await updatePassword(password);
+        }
+
+      } catch (error) {
+        console.error(
+          'Story Studio authentication:',
+          error
+        );
+
+        showMessage(
+          error.message ||
+          'Something went wrong. Please try again.'
+        );
+
+      } finally {
+        setLoading(false);
+      }
     }
-  });
+  );
 
   /* ---------------------------------------
-     INITIALIZE
+     INITIALIZE AUTHENTICATION
   --------------------------------------- */
 
   async function initialize() {
-    createUsernameField();
-
-    connectSwitchButton();
-
-    updateButtonText();
-
-    setLoading(true, 'Connecting…');
-
     try {
+      validatePage();
+
+      createUsernameField();
+
+      connectSwitchButton();
+
+      updateButtonText();
+
+      setLoading(true, 'Connecting…');
+
+      // Wait until the shared cloud system is ready.
       await initializeCloud();
 
       const {
@@ -541,17 +696,23 @@
 
       if (error) throw error;
 
-      client.auth.onAuthStateChange(event => {
-        if (event === 'PASSWORD_RECOVERY') {
-          setMode('recovery');
+      // Listen for password recovery events.
+      const listenerResult =
+        client.auth.onAuthStateChange(event => {
+          if (event === 'PASSWORD_RECOVERY') {
+            setMode('recovery');
 
-          showMessage(
-            'Choose a new password for your account.',
-            true
-          );
-        }
-      });
+            showMessage(
+              'Choose a new password for your account.',
+              true
+            );
+          }
+        });
 
+      authListener =
+        listenerResult?.data?.subscription || null;
+
+      // Existing registered account.
       if (
         session?.user &&
         !session.user.is_anonymous &&
@@ -561,7 +722,10 @@
         return;
       }
 
-      if (window.location.search.includes('type=recovery')) {
+      // Password reset link.
+      if (
+        window.location.search.includes('type=recovery')
+      ) {
         setMode('recovery');
 
         showMessage(
@@ -587,6 +751,18 @@
     }
   }
 
+  /* ---------------------------------------
+     START
+  --------------------------------------- */
+
   initialize();
+
+  // Clean up the authentication listener if the page exits.
+  window.addEventListener('pagehide', () => {
+    if (authListener) {
+      authListener.unsubscribe();
+      authListener = null;
+    }
+  });
 
 })();
