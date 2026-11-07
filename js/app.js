@@ -1737,4 +1737,4 @@ if (document.readyState === 'loading') {
   initializeApplication();
 }
  
-{)();
+})();
