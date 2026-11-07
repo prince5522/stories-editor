@@ -908,6 +908,8 @@
       const { error } = await client.auth.signOut();
 
       if (error) throw error;
+       localStorage.removeItem('channelStudio.authenticated');
+      localStorage.removeItem('channelStudio.username');
 
       initialized = false;
       ownerId = null;
