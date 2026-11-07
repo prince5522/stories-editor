@@ -39,7 +39,7 @@
       box-shadow: 0 18px 45px #24395a12;
     }
 
-    .home-welcome:after {
+    .home-Welcome Prince Newton:after {
       content: "";
       position: absolute;
       width: 230px;
@@ -664,6 +664,31 @@
 
       </section>
 
+<!-- WEEKLY ACTIVITY -->
+<section class="home-section home-week-section">
+
+  <div class="home-section-heading">
+    <div>
+      <p class="eyebrow">YOUR SCHEDULE</p>
+      <h2>Weekly activity</h2>
+      <p class="muted small">
+        Your planned activity from Monday to Sunday.
+      </p>
+    </div>
+
+    <a class="text-link" href="planner.html">
+      Manage planner →
+    </a>
+  </div>
+
+  <div id="homeWeek" class="home-week-grid">
+    <div class="empty-state">
+      Loading your weekly activity...
+    </div>
+  </div>
+
+</section>
+      
       <!-- UPCOMING TASKS -->
       <section class="home-section">
 
@@ -866,7 +891,7 @@
     }
 
     if (!username) {
-      username = 'Creator';
+      username = 'Prince';
     }
 
     const usernameElement = document.getElementById('accountUsername');
