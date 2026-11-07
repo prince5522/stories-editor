@@ -1614,96 +1614,125 @@ function setupBackup() {
 
   /* INITIALIZATION */
 
-  document.addEventListener('DOMContentLoaded', () => {
-    wireTaskCompletion();
+ /* INITIALIZATION */
 
-    // Stories page
-    if (
-      $('storyForm') ||
-      $('storyList') ||
-      $('splitStory')
-    ) {
-      setupStories();
-    }
+function initializeApplication() {
+  wireTaskCompletion();
 
-    // Episode splitter
-    if ($('splitForm')) {
-      setupEpisodes();
-    }
+  // Stories page
+  if (
+    $('storyForm') ||
+    $('storyList') ||
+    $('splitStory')
+  ) {
+    setupStories();
+  }
 
-    // Planner
-    if (
-      $('taskForm') ||
-      $('taskList') ||
-      $('taskFilter') ||
-      $('enableNotifications')
-    ) {
-      setupPlanner();
-    }
+  // Episode splitter
+  if ($('splitForm')) {
+    setupEpisodes();
+  }
 
-    // Channels
-    if ($('channelForm') || $('channelList')) {
-      setupChannels();
-    }
+  // Planner
+  if (
+    $('taskForm') ||
+    $('taskList') ||
+    $('taskFilter') ||
+    $('enableNotifications')
+  ) {
+    setupPlanner();
+  }
 
-    // Promotions
-    if ($('hypeForm') || $('hypeList')) {
-      setupHype();
-    }
+  // Channels
+  if ($('channelForm') || $('channelList')) {
+    setupChannels();
+  }
 
-    // Backup
-    if ($('exportBackup') || $('restoreBackup')) {
-      setupBackup();
-    }
+  // Promotions
+  if ($('hypeForm') || $('hypeList')) {
+    setupHype();
+  }
 
-    // Settings
-    if (
-      $('saveSettings') ||
-      $('quickTheme') ||
-      $('toneSelect') ||
-      $('storageInfo')
-    ) {
-      setupSettings();
-    }
+  // Backup
+  if ($('exportBackup') || $('restoreBackup')) {
+    setupBackup();
+  }
 
-    // Notifications
-    if ($('requestPermission') || $('notificationTasks')) {
-      setupNotifications();
-    }
+  // Settings
+  if (
+    $('saveSettings') ||
+    $('quickTheme') ||
+    $('toneSelect') ||
+    $('storageInfo')
+  ) {
+    setupSettings();
+  }
 
-    // Home statistics
-    if (
-      $('storyCount') ||
-      $('taskCount') ||
-      $('channelCount') ||
-      $('homeTasks')
-    ) {
-      refreshHome();
-    }
+  // Notifications
+  if ($('requestPermission') || $('notificationTasks')) {
+    setupNotifications();
+  }
 
-    // Navigation highlighting
-    const currentPage = location.pathname.split('/').pop();
+  // Home statistics and saved content
+  if (
+    $('storyCount') ||
+    $('taskCount') ||
+    $('channelCount') ||
+    $('homeTasks')
+  ) {
+    refreshHome();
+  }
 
-    document.querySelectorAll('.nav-link').forEach(link => {
-      if (link.getAttribute('href') === currentPage) {
-        link.classList.add('active');
-      }
-    });
+  // Navigation highlighting
+  const currentPage = location.pathname.split('/').pop();
 
-    // Service worker
-    if (
-      'serviceWorker' in navigator &&
-      location.protocol.startsWith('http')
-    ) {
-      navigator.serviceWorker
-        .register('service-worker.js')
-        .catch(error => {
-          console.warn(
-            'Offline cache not available',
-            error
-          );
-        });
+  document.querySelectorAll('.nav-link').forEach(link => {
+    if (link.getAttribute('href') === currentPage) {
+      link.classList.add('active');
     }
   });
 
-})();
+  // Mobile sidebar
+  const menuToggle = $('menuToggle');
+  const sidebar = document.querySelector('.sidebar');
+
+  if (menuToggle && sidebar && !menuToggle.dataset.wired) {
+    menuToggle.dataset.wired = '1';
+
+    menuToggle.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+    });
+
+    document.addEventListener('click', event => {
+      if (
+        sidebar.classList.contains('open') &&
+        !sidebar.contains(event.target) &&
+        !menuToggle.contains(event.target)
+      ) {
+        sidebar.classList.remove('open');
+      }
+    });
+  }
+
+  // Service worker
+  if (
+    'serviceWorker' in navigator &&
+    location.protocol.startsWith('http')
+  ) {
+    navigator.serviceWorker
+      .register('service-worker.js')
+      .catch(error => {
+        console.warn('Offline cache not available', error);
+      });
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener(
+    'DOMContentLoaded',
+    initializeApplication,
+    { once: true }
+  );
+} else {
+  initializeApplication();
+}
