@@ -335,6 +335,30 @@
       font-weight: 950;
     }
 
+    /* Account identity */
+    .account-identity {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+      margin-right: 5px;
+      text-decoration: none;
+    }
+
+    .account-username {
+      max-width: 125px;
+      overflow: hidden;
+      color: var(--text, #172033);
+      font-size: 12px;
+      font-weight: 800;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .avatar-link {
+      flex-shrink: 0;
+    }
+
     /* Dark theme */
     body[data-theme="dark"] .home-welcome {
       background:
@@ -479,6 +503,10 @@
       .home-section-heading h2 {
         font-size: 18px;
       }
+
+      .account-username {
+        max-width: 90px;
+      }
     }
 
     @media (max-width: 370px) {
@@ -517,7 +545,7 @@
   </style>
 </head>
 
-<body data-page="home">
+<body data-page="home" style="visibility:hidden">
 
 <div class="app-layout">
 
@@ -567,7 +595,11 @@
 
       <div class="topbar-actions">
         <button id="quickTheme" class="icon-button" aria-label="Toggle theme" title="Toggle theme">◐</button>
-        <a class="avatar-link" href="settings.html" aria-label="Settings">CS</a>
+
+        <div class="account-identity">
+          <span class="account-username" id="accountUsername">Account</span>
+          <a class="avatar-link" id="accountAvatar" href="settings.html" aria-label="Account settings">CS</a>
+        </div>
       </div>
     </header>
 
@@ -594,7 +626,6 @@
           </a>
         </div>
 
-        <!-- Channel Studio brand emblem instead of generic AI sparkle -->
         <div class="home-brand-art" aria-label="Channel Studio CS logo">
           <span class="home-brand-letters">CS</span>
           <span class="home-brand-caption">CHANNEL STUDIO</span>
@@ -774,15 +805,117 @@
 
 <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
 
-<!-- EXISTING APPLICATION SCRIPTS -->
-<script src="js/storage.js"></script>
-<script src="js/themes.js"></script>
-<script src="js/transitions.js"></script>
-<script src="js/effects.js"></script>
-<script src="js/notifications.js"></script>
-<script src="js/app.js"></script>
-<script src="js/creator-lab.js"></script>
-<script src="js/whatsapp-shell.js"></script>
+<!-- ACCOUNT SESSION AND APPLICATION LOADER -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-cloud.js"></script>
+
+<script>
+(async function () {
+  'use strict';
+
+  const loginPage = 'login.html';
+
+  function redirectToLogin() {
+    window.location.replace(loginPage);
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Could not load ' + src));
+      document.body.appendChild(script);
+    });
+  }
+
+  try {
+    const cloud = window.ChannelStudioCloud;
+
+    if (!cloud) {
+      throw new Error('Account service is unavailable.');
+    }
+
+    if (cloud.ready) {
+      await cloud.ready;
+    }
+
+    const user = await Promise.resolve(cloud.getUser());
+
+    // Anonymous sessions are not permanent registered accounts.
+    if (!user || user.is_anonymous === true) {
+      redirectToLogin();
+      return;
+    }
+
+    let username = '';
+
+    if (typeof cloud.getUsername === 'function') {
+      username = await Promise.resolve(cloud.getUsername()) || '';
+    }
+
+    if (!username && user.user_metadata) {
+      username =
+        user.user_metadata.username ||
+        user.user_metadata.name ||
+        '';
+    }
+
+    if (!username && user.email) {
+      username = user.email.split('@')[0];
+    }
+
+    if (!username) {
+      username = 'Creator';
+    }
+
+    const usernameElement = document.getElementById('accountUsername');
+    const avatarElement = document.getElementById('accountAvatar');
+
+    if (usernameElement) {
+      usernameElement.textContent = username;
+      usernameElement.title = username;
+    }
+
+    if (avatarElement) {
+      const initials = username
+        .trim()
+        .split(/[\s._-]+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(part => part.charAt(0).toUpperCase())
+        .join('');
+
+      avatarElement.textContent = initials || 'CS';
+      avatarElement.title = username + ' — Account settings';
+      avatarElement.setAttribute('aria-label', username + ' account settings');
+    }
+
+    // Load the existing application scripts in their original order.
+    const applicationScripts = [
+      'js/storage.js',
+      'js/themes.js',
+      'js/transitions.js',
+      'js/effects.js',
+      'js/notifications.js',
+      'js/app.js',
+      'js/creator-lab.js',
+      'js/whatsapp-shell.js'
+    ];
+
+    for (const src of applicationScripts) {
+      await loadScript(src);
+    }
+
+    // Show the dashboard after account verification and script loading.
+    document.body.style.visibility = 'visible';
+
+  } catch (error) {
+    console.error('Channel Studio account startup error:', error);
+    redirectToLogin();
+  }
+})();
+</script>
 
 </body>
 </html>
