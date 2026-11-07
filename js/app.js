@@ -1478,7 +1478,7 @@ function setupBackup() {
   /* INITIALIZATION */
 
   document.addEventListener('DOMContentLoaded', () => {
-    wireTaskCompleation();
+    wireTaskCompletion();
 
     // Stories page
     if (
