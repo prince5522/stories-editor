@@ -1,11 +1,11 @@
 
 /* =========================================
-   CHANNEL STUDIO v25
+   CHANNEL STUDIO v26
    COMPLETE OFFLINE CACHE
    Planner folders + fresh planner scripts
 ========================================= */
 
-const CACHE = 'channel-studio-shell-v25';
+const CACHE = 'channel-studio-shell-v26';
 const CACHE_PREFIX = 'channel-studio-shell-';
 const FETCH_TIMEOUT = 6000;
 
@@ -166,7 +166,7 @@ self.addEventListener('install', event => {
 
     await self.skipWaiting();
 
-    console.log('[Channel Studio] v25 installed');
+    console.log('[Channel Studio] v26 installed');
   })());
 });
 
@@ -189,7 +189,7 @@ self.addEventListener('activate', event => {
 
     await self.clients.claim();
 
-    console.log('[Channel Studio] v25 activated');
+    console.log('[Channel Studio] v26 activated');
   })());
 });
 
