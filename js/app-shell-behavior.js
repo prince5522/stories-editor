@@ -2,8 +2,6 @@
 (function () {
   'use strict';
 
-  // Do not redirect users back to the welcome screen.
-
   const DB_NAME = 'channelStudioAppearanceDB';
   const STORE_NAME = 'wallpapers';
   const WALLPAPER_KEY = 'custom-wallpaper';
@@ -18,6 +16,25 @@
     }
 
     document.documentElement.classList.add('native-android-shell');
+
+    // Solid background behind Android's transparent status bar.
+    if (!document.getElementById('android-status-bar-background')) {
+      const statusBackground = document.createElement('div');
+      statusBackground.id = 'android-status-bar-background';
+
+      Object.assign(statusBackground.style, {
+        position: 'fixed',
+        top: '0',
+        left: '0',
+        right: '0',
+        height: 'max(28px, env(safe-area-inset-top, 28px))',
+        background: '#36594f',
+        zIndex: '99999',
+        pointerEvents: 'none'
+      });
+
+      document.body.appendChild(statusBackground);
+    }
 
     if (document.getElementById('android-safe-area-fix')) {
       return;
@@ -94,14 +111,6 @@
     } catch (error) {
       return;
     }
-
-    request.onupgradeneeded = function (event) {
-      const db = event.target.result;
-
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-    };
 
     request.onsuccess = function () {
       const db = request.result;
