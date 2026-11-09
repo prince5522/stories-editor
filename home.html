@@ -39,7 +39,7 @@
       box-shadow: 0 18px 45px #24395a12;
     }
 
-    .home-Welcome Prince Newton:after {
+    .home-welcome::after {
       content: "";
       position: absolute;
       width: 230px;
@@ -664,9 +664,6 @@
 
       </section>
 
-
-      \
-      
       <!-- UPCOMING TASKS -->
       <section class="home-section">
 
@@ -808,10 +805,6 @@
 <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
 
 <!-- ACCOUNT SESSION AND APPLICATION LOADER -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/storage.js"></script>
-<script src="js/supabase-cloud.js"></script>
-
 <script>
 (async function () {
   'use strict';
@@ -823,35 +816,112 @@
     window.location.replace(loginPage);
   }
 
-  function loadScript(src) {
+  // Load local application files.
+  function loadLocalScript(src) {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
+
       script.src = src;
+
       script.onload = resolve;
-      script.onerror = () => reject(
-        new Error('Could not load ' + src)
-      );
+
+      script.onerror = () => {
+        reject(new Error('Could not load ' + src));
+      };
+
       document.body.appendChild(script);
     });
   }
 
+  // Attempt to load Supabase, but never wait indefinitely.
+  function loadSupabase() {
+    return new Promise(resolve => {
+      if (window.supabase?.createClient) {
+        resolve(true);
+        return;
+      }
+
+      if (navigator.onLine === false) {
+        resolve(false);
+        return;
+      }
+
+      const script = document.createElement('script');
+
+      let finished = false;
+
+      const finish = result => {
+        if (finished) return;
+
+        finished = true;
+        clearTimeout(timeout);
+        resolve(result);
+      };
+
+      const timeout = window.setTimeout(() => {
+        finish(false);
+      }, 4000);
+
+      script.src =
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+
+      script.onload = () => {
+        finish(!!window.supabase?.createClient);
+      };
+
+      script.onerror = () => {
+        finish(false);
+      };
+
+      document.head.appendChild(script);
+    });
+  }
+
+  // Limit cloud waits so local access remains available.
+  async function waitForCloud(promise, timeoutMs = 4000) {
+    if (!promise) return null;
+
+    return Promise.race([
+      promise,
+      new Promise(resolve => {
+        window.setTimeout(() => resolve(null), timeoutMs);
+      })
+    ]);
+  }
+
   try {
+    // 1. Load local storage first.
+    await loadLocalScript('js/storage.js');
+
+    // 2. Try to load the Supabase library.
+    const supabaseAvailable = await loadSupabase();
+
+    // 3. Start the cloud system only when Supabase is ready.
+    if (
+      supabaseAvailable &&
+      !window.ChannelStudioCloud
+    ) {
+      await loadLocalScript('js/supabase-cloud.js');
+    }
+
     const cloud = window.ChannelStudioCloud;
 
     let user = null;
-    let cloudAvailable = false;
+    let registeredUser = false;
 
-    if (cloud) {
+    // 4. Check the registered account when online.
+    if (cloud && supabaseAvailable) {
       try {
-        const result = cloud.ready
-          ? await cloud.ready
-          : null;
+        await waitForCloud(cloud.ready);
 
-        cloudAvailable = result?.online !== false;
+        user = await waitForCloud(
+          cloud.getUser(),
+          3000
+        );
 
-        if (cloudAvailable) {
-          user = await cloud.getUser();
-        }
+        registeredUser =
+          !!user && user.is_anonymous !== true;
+
       } catch (error) {
         console.warn(
           'Cloud unavailable. Checking local access.',
@@ -860,9 +930,7 @@
       }
     }
 
-    const registeredUser =
-      user && user.is_anonymous !== true;
-
+    // 5. Allow a previously logged-in user to continue locally.
     const offlineAccess =
       !registeredUser &&
       localStorage.getItem(OFFLINE_AUTH_KEY) === '1';
@@ -872,13 +940,15 @@
       return;
     }
 
+    // 6. Restore account username.
     let username = '';
 
     if (registeredUser) {
       if (typeof cloud.getUsername === 'function') {
-        username = await Promise.resolve(
-          cloud.getUsername()
-        ) || '';
+        username =
+          await Promise.resolve(
+            cloud.getUsername()
+          ) || '';
       }
 
       if (!username && user.user_metadata) {
@@ -894,9 +964,10 @@
     }
 
     if (!username) {
-      username = localStorage.getItem(
-        'channelStudio.username'
-      ) || 'Creator';
+      username =
+        localStorage.getItem(
+          'channelStudio.username'
+        ) || 'Creator';
     }
 
     const usernameElement =
@@ -920,14 +991,17 @@
         .join('');
 
       avatarElement.textContent = initials || 'CS';
+
       avatarElement.title =
         username + ' — Account settings';
+
       avatarElement.setAttribute(
         'aria-label',
         username + ' account settings'
       );
     }
 
+    // 7. Load the main application scripts.
     const applicationScripts = [
       'js/themes.js',
       'js/transitions.js',
@@ -939,9 +1013,10 @@
     ];
 
     for (const src of applicationScripts) {
-      await loadScript(src);
+      await loadLocalScript(src);
     }
 
+    // 8. Reveal the dashboard.
     document.body.style.visibility = 'visible';
 
     if (offlineAccess) {
@@ -956,8 +1031,8 @@
       error
     );
 
-    // Do not hide the page if cloud services fail.
     document.body.style.visibility = 'visible';
   }
+
 })();
 </script>
