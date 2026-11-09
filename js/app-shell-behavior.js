@@ -1,4 +1,10 @@
-/* Channel Studio navigation + global wallpaper */
+
+/* =====================================================
+   CHANNEL STUDIO — APP SHELL BEHAVIOUR
+   Android safe area + global wallpaper restoration
+   Preserves the existing wallpaper database.
+===================================================== */
+
 (function () {
   'use strict';
 
@@ -17,9 +23,10 @@
 
     document.documentElement.classList.add('native-android-shell');
 
-    // Solid background behind Android's transparent status bar.
+    // Solid background behind Android's status bar.
     if (!document.getElementById('android-status-bar-background')) {
       const statusBackground = document.createElement('div');
+
       statusBackground.id = 'android-status-bar-background';
 
       Object.assign(statusBackground.style, {
@@ -41,6 +48,7 @@
     }
 
     const style = document.createElement('style');
+
     style.id = 'android-safe-area-fix';
 
     style.textContent = `
@@ -56,6 +64,7 @@
     document.head.appendChild(style);
   }
 
+  // Restore the global wallpaper without changing its saved data.
   function applyGlobalWallpaper(blob) {
     if (!blob || !(blob instanceof Blob)) return;
 
@@ -79,18 +88,32 @@
     }
 
     const oldUrl = layer.dataset.objectUrl;
-    if (oldUrl) URL.revokeObjectURL(oldUrl);
+
+    if (oldUrl) {
+      URL.revokeObjectURL(oldUrl);
+    }
 
     const imageUrl = URL.createObjectURL(blob);
+
     layer.dataset.objectUrl = imageUrl;
 
-    const brightness = Math.max(
-      20,
-      Math.min(
-        100,
-        Number(localStorage.getItem(BRIGHTNESS_KEY)) || 75
-      )
-    );
+    let brightness = 75;
+
+    try {
+      const savedBrightness = Number(
+        localStorage.getItem(BRIGHTNESS_KEY)
+      );
+
+      if (
+        Number.isFinite(savedBrightness) &&
+        savedBrightness >= 20 &&
+        savedBrightness <= 100
+      ) {
+        brightness = savedBrightness;
+      }
+    } catch (error) {
+      // Continue with the default brightness.
+    }
 
     const darkness = (100 - brightness) / 100 * 0.65;
 
@@ -109,8 +132,20 @@
     try {
       request = indexedDB.open(DB_NAME, 1);
     } catch (error) {
+      console.warn('Wallpaper database could not open:', error);
       return;
     }
+
+    // IMPORTANT:
+    // Create the wallpaper object store when the database
+    // is first created. Do not remove or overwrite existing data.
+    request.onupgradeneeded = function (event) {
+      const db = event.target.result;
+
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
 
     request.onsuccess = function () {
       const db = request.result;
@@ -132,16 +167,28 @@
 
         getRequest.onsuccess = function () {
           applyGlobalWallpaper(getRequest.result);
-          db.close();
         };
 
         getRequest.onerror = function () {
+          console.warn('Could not restore saved wallpaper.');
+        };
+
+        transaction.oncomplete = function () {
+          db.close();
+        };
+
+        transaction.onerror = function () {
           db.close();
         };
 
       } catch (error) {
+        console.warn('Wallpaper restoration failed:', error);
         db.close();
       }
+    };
+
+    request.onerror = function () {
+      console.warn('Wallpaper database could not be opened.');
     };
   }
 
