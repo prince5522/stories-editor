@@ -133,16 +133,12 @@
       );
     }
 
-    // 2. Ensure Supabase library is available.
-    if (!window.supabase?.createClient) {
-      await loadScript(
-        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
-      );
-    }
-
+    // 2. Supabase is loaded by login.html when online.
+    // Do not wait for a CDN script that may already have
+    // failed while the device was offline.
     if (!window.supabase?.createClient) {
       throw new Error(
-        'Supabase library could not load.'
+        'Supabase library is unavailable. Check your connection.'
       );
     }
 
