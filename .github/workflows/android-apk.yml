@@ -47,6 +47,32 @@ jobs:
         working-directory: android-build
         run: npx cap add android
 
+      - name: Add exact alarm permission
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest = Path(
+              "android-build/android/app/src/main/AndroidManifest.xml"
+          )
+
+          content = manifest.read_text()
+          permission = (
+              '    <uses-permission '
+              'android:name="android.permission.SCHEDULE_EXACT_ALARM" />'
+          )
+
+          if permission not in content:
+              content = content.replace(
+                  "<application",
+                  permission + "\n    <application",
+                  1
+              )
+
+          manifest.write_text(content)
+          print("Exact alarm permission added.")
+          PY
+
       - name: Synchronize Android project
         working-directory: android-build
         run: npx cap sync android
