@@ -1,7 +1,7 @@
 /* =====================================================
    STORIES EDITOR — ANDROID NATIVE REMINDER BRIDGE
    Uses local Android notifications.
-   Does not replace the existing web reminder system.
+   Supports notification and exact-alarm permissions.
 ===================================================== */
 
 (function () {
@@ -86,7 +86,7 @@
     return date;
   }
 
-  async function requestPermission(plugin) {
+  async function requestNotificationPermission(plugin) {
     let permission = await plugin.checkPermissions();
 
     if (permission.display !== 'granted') {
@@ -94,6 +94,81 @@
     }
 
     return permission.display === 'granted';
+  }
+
+  async function checkExactAlarmPermission(plugin) {
+    if (typeof plugin.checkExactNotificationSetting !== 'function') {
+      return true;
+    }
+
+    const result = await plugin.checkExactNotificationSetting();
+
+    return result.exact_alarm === 'granted';
+  }
+
+  async function requestExactAlarmAccess() {
+    if (!isAndroidApp()) {
+      return {
+        granted: false,
+        message: 'Open this feature in the installed Android app.'
+      };
+    }
+
+    const plugin = getPlugin();
+
+    if (!plugin) {
+      return {
+        granted: false,
+        message: 'Android notification service is unavailable.'
+      };
+    }
+
+    try {
+      const alreadyGranted =
+        await checkExactAlarmPermission(plugin);
+
+      if (alreadyGranted) {
+        await sync();
+
+        return {
+          granted: true,
+          message: 'Exact alarm access is already enabled.'
+        };
+      }
+
+      if (
+        typeof plugin.changeExactNotificationSetting !== 'function'
+      ) {
+        return {
+          granted: false,
+          message: 'Exact alarm settings are unavailable.'
+        };
+      }
+
+      await plugin.changeExactNotificationSetting();
+
+      const granted =
+        await checkExactAlarmPermission(plugin);
+
+      if (granted) {
+        await sync();
+      }
+
+      return {
+        granted,
+        message: granted
+          ? 'Exact alarm access enabled.'
+          : 'Please allow Alarms & reminders in Android settings.'
+      };
+
+    } catch (error) {
+      console.error('Exact alarm permission error:', error);
+
+      return {
+        granted: false,
+        message: 'Could not open exact alarm settings.'
+      };
+    }
   }
 
   async function sync() {
@@ -109,10 +184,21 @@
     syncing = true;
 
     try {
-      const allowed = await requestPermission(plugin);
+      const allowed =
+        await requestNotificationPermission(plugin);
 
       if (!allowed) {
         console.warn('Notification permission was not granted.');
+        return;
+      }
+
+      const exactAllowed =
+        await checkExactAlarmPermission(plugin);
+
+      if (!exactAllowed) {
+        console.warn(
+          'Exact alarm access is not enabled. Use the planner permission button.'
+        );
         return;
       }
 
@@ -221,7 +307,15 @@
   window.addEventListener('focus', delayedSync);
 
   window.StoriesAndroidReminders = {
-    sync
+    sync,
+    requestExactAlarmAccess,
+    checkExactAlarmPermission: async function () {
+      const plugin = getPlugin();
+
+      if (!plugin) return false;
+
+      return checkExactAlarmPermission(plugin);
+    }
   };
 
 })();
