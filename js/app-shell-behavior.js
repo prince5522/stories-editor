@@ -1,4 +1,3 @@
-
 /* Channel Studio navigation + global wallpaper */
 (function () {
   'use strict';
@@ -9,6 +8,36 @@
   const STORE_NAME = 'wallpapers';
   const WALLPAPER_KEY = 'custom-wallpaper';
   const BRIGHTNESS_KEY = 'studio_wallpaper_brightness';
+
+  function applyAndroidSafeArea() {
+    if (
+      !window.Capacitor?.isNativePlatform?.() ||
+      window.Capacitor?.getPlatform?.() !== 'android'
+    ) {
+      return;
+    }
+
+    document.documentElement.classList.add('native-android-shell');
+
+    if (document.getElementById('android-safe-area-fix')) {
+      return;
+    }
+
+    const style = document.createElement('style');
+    style.id = 'android-safe-area-fix';
+
+    style.textContent = `
+      html.native-android-shell body {
+        padding-top: max(28px, env(safe-area-inset-top, 0px));
+      }
+
+      html.native-android-shell .topbar {
+        top: max(28px, env(safe-area-inset-top, 0px));
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
 
   function applyGlobalWallpaper(blob) {
     if (!blob || !(blob instanceof Blob)) return;
@@ -40,7 +69,10 @@
 
     const brightness = Math.max(
       20,
-      Math.min(100, Number(localStorage.getItem(BRIGHTNESS_KEY)) || 75)
+      Math.min(
+        100,
+        Number(localStorage.getItem(BRIGHTNESS_KEY)) || 75
+      )
     );
 
     const darkness = (100 - brightness) / 100 * 0.65;
@@ -80,7 +112,11 @@
       }
 
       try {
-        const transaction = db.transaction(STORE_NAME, 'readonly');
+        const transaction = db.transaction(
+          STORE_NAME,
+          'readonly'
+        );
+
         const getRequest = transaction
           .objectStore(STORE_NAME)
           .get(WALLPAPER_KEY);
@@ -93,6 +129,7 @@
         getRequest.onerror = function () {
           db.close();
         };
+
       } catch (error) {
         db.close();
       }
@@ -100,12 +137,18 @@
   }
 
   function start() {
+    applyAndroidSafeArea();
     loadGlobalWallpaper();
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start, { once: true });
+    document.addEventListener(
+      'DOMContentLoaded',
+      start,
+      { once: true }
+    );
   } else {
     start();
   }
+
 })();
