@@ -47,12 +47,29 @@
   }
 
   function isCompleted(settings, slotName, date) {
-    const today = dateKey(date);
+  const scheduledDay = dateKey(date);
 
-    if (dateKey(new Date()) === today &&
-        settings.slotRuns?.[slotName] === today) {
-      return true;
-    }
+  if (settings.slotRuns?.[slotName] === scheduledDay) {
+    return true;
+  }
+
+  const records = settings.completed?.[slotName] || [];
+
+  return Array.isArray(records) && records.some(record => {
+    const value =
+      record?.completedAt ||
+      record?.posted_at ||
+      record?.postedAt ||
+      record?.date;
+
+    if (!value) return false;
+
+    const completedDate = new Date(value);
+
+    return !Number.isNaN(completedDate.getTime()) &&
+      dateKey(completedDate) === scheduledDay;
+  });
+}
 
     const records = settings.completed?.[slotName] || [];
 
