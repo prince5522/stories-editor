@@ -1,1 +1,18 @@
-
+{
+  "name": "stories-editor-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stories Editor Android application",
+  "scripts": {
+    "build": "echo Android build is handled by GitHub Actions"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/local-notifications": "^7.0.2",
+    "@capacitor/preferences": "^7.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.3"
+  }
+}
