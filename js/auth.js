@@ -1,9 +1,8 @@
-
 /* =========================================
    STORY STUDIO AUTHENTICATION
    Email + Password + Username
    Uses the shared Supabase Cloud system
-   ========================================= */
+========================================= */
 
 (() => {
   'use strict';
@@ -29,15 +28,25 @@
   let cloud = null;
   let usernameInput = null;
   let authListener = null;
-   function rememberOfflineAccess(username) {
+
+  function rememberOfflineAccess(username) {
     try {
-      localStorage.setItem('channelStudio.authenticated', '1');
+      localStorage.setItem(
+        'channelStudio.authenticated',
+        '1'
+      );
 
       if (username) {
-        localStorage.setItem('channelStudio.username', username);
+        localStorage.setItem(
+          'channelStudio.username',
+          username
+        );
       }
     } catch (error) {
-      console.warn('Could not save offline access:', error);
+      console.warn(
+        'Could not save offline access:',
+        error
+      );
     }
   }
 
@@ -79,17 +88,23 @@
     return new Promise((resolve, reject) => {
       const existing = Array.from(
         document.scripts
-      ).find(script => script.src === new URL(
-        src,
-        window.location.href
-      ).href);
+      ).find(script =>
+        script.src === new URL(
+          src,
+          window.location.href
+        ).href
+      );
 
-      if (existing && existing.dataset.loaded === 'true') {
+      if (
+        existing &&
+        existing.dataset.loaded === 'true'
+      ) {
         resolve();
         return;
       }
 
-      const script = existing || document.createElement('script');
+      const script =
+        existing || document.createElement('script');
 
       if (!existing) {
         script.src = src;
@@ -97,14 +112,24 @@
         document.head.appendChild(script);
       }
 
-      script.addEventListener('load', () => {
-        script.dataset.loaded = 'true';
-        resolve();
-      }, { once: true });
+      script.addEventListener(
+        'load',
+        () => {
+          script.dataset.loaded = 'true';
+          resolve();
+        },
+        { once: true }
+      );
 
-      script.addEventListener('error', () => {
-        reject(new Error('Could not load ' + src));
-      }, { once: true });
+      script.addEventListener(
+        'error',
+        () => {
+          reject(
+            new Error('Could not load ' + src)
+          );
+        },
+        { once: true }
+      );
 
       if (
         existing &&
@@ -134,8 +159,8 @@
     }
 
     // 2. Supabase is loaded by login.html when online.
-    // Do not wait for a CDN script that may already have
-    // failed while the device was offline.
+    // Do not wait for a CDN script that may already
+    // have failed while the device was offline.
     if (!window.supabase?.createClient) {
       throw new Error(
         'Supabase library is unavailable. Check your connection.'
@@ -155,8 +180,7 @@
       );
     }
 
-    // 4. IMPORTANT:
-    // Wait for cloud initialization BEFORE getting its client.
+    // 4. Wait for cloud initialization.
     if (
       cloud.ready &&
       typeof cloud.ready.then === 'function'
@@ -171,7 +195,7 @@
       }
     }
 
-    // 5. Now the client should be available.
+    // 5. Get the initialized client.
     client = cloud.getClient();
 
     if (!client) {
@@ -291,7 +315,9 @@
 
   function setMode(nextMode) {
     if (
-      !['login', 'signup', 'recovery'].includes(nextMode)
+      !['login', 'signup', 'recovery'].includes(
+        nextMode
+      )
     ) {
       return;
     }
@@ -441,7 +467,8 @@
       setLoading(true, 'Sending link…');
 
       try {
-        const result = await cloud.resetPassword(email);
+        const result =
+          await cloud.resetPassword(email);
 
         if (!result?.success) {
           throw new Error(
@@ -493,6 +520,7 @@
       data: { session },
       error
     } = await client.auth.getSession();
+
     if (error) throw error;
 
     if (
@@ -530,14 +558,16 @@
       password
     );
 
-   if (!result || result.success !== true) {
+    if (!result || result.success !== true) {
       throw new Error(
         result?.error ||
         'Sign in failed. Please try again.'
       );
     }
 
-    rememberOfflineAccess(email.split('@')[0]);
+    rememberOfflineAccess(
+      email.split('@')[0]
+    );
 
     showMessage(
       'Signed in successfully. Welcome back!',
@@ -552,7 +582,8 @@
   --------------------------------------- */
 
   async function updatePassword(password) {
-    const result = await cloud.changePassword(password);
+    const result =
+      await cloud.changePassword(password);
 
     if (!result?.success) {
       throw new Error(
@@ -719,7 +750,6 @@
           }
         });
 
-
       authListener =
         listenerResult?.data?.subscription || null;
 
@@ -729,11 +759,12 @@
         !session.user.is_anonymous &&
         !window.location.search.includes('type=recovery')
       ) {
-         rememberOfflineAccess(
+        rememberOfflineAccess(
           session.user.user_metadata?.username ||
           session.user.email?.split('@')[0] ||
           'Creator'
         );
+
         openHome();
         return;
       }
@@ -757,6 +788,30 @@
         'Story Studio initialization:',
         error
       );
+
+      // Allow returning users to continue locally
+      // when the account service is unavailable.
+      const hasOfflineAccess =
+        localStorage.getItem(
+          'channelStudio.authenticated'
+        ) === '1';
+
+      const isPasswordRecovery =
+        window.location.search.includes(
+          'type=recovery'
+        );
+
+      if (
+        hasOfflineAccess &&
+        !isPasswordRecovery &&
+        (
+          navigator.onLine === false ||
+          !window.supabase?.createClient
+        )
+      ) {
+        openHome();
+        return;
+      }
 
       setLoading(false);
 
