@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en" data-theme="system">
 <head>
@@ -136,6 +135,15 @@
   border:1px solid rgba(255,255,255,.22);
 }
 .planner-slot .planner-fields label{position:relative}
+
+/* ANDROID EXACT REMINDER PANEL */
+#androidAlarmPermissionPanel[hidden]{display:none!important}
+#androidAlarmPermissionPanel{
+  margin-bottom:20px;
+  border:1px solid var(--border-color,rgba(127,127,127,.25));
+}
+#exactAlarmPermissionStatus{margin-top:12px}
+
 @media(prefers-reduced-motion:no-preference){
   .planner-fields select:hover,#taskMediaSelect:hover{border-color:rgba(255,255,255,.48)}
 }
@@ -200,6 +208,29 @@
 <p class="eyebrow">YOUR POSTING ROUTINE</p>
 <h1>Story <span>planner</span></h1>
 <p class="muted">Manage three independent queues. Choose each story, channel, starting episode and posting time. You publish manually through WhatsApp.</p>
+</section>
+
+<!-- ANDROID EXACT REMINDER PERMISSION -->
+<section class="panel" id="androidAlarmPermissionPanel" hidden>
+<p class="eyebrow">ANDROID NOTIFICATIONS</p>
+<h2>⏰ Enable reliable reminders</h2>
+<p class="muted">
+Allow Stories Editor to schedule exact posting reminders
+through Android's Alarms & reminders settings.
+</p>
+<button
+  type="button"
+  class="button primary"
+  id="enableExactAlarmsButton"
+>
+Enable exact reminders
+</button>
+<p
+  id="exactAlarmPermissionStatus"
+  class="small muted"
+  role="status"
+  aria-live="polite"
+></p>
 </section>
 
 <section class="panel">
@@ -375,6 +406,67 @@
 <script src="js/planner-publish.js"></script>
 <script src="js/planner-progress.js"></script>
 <script src="js/native-notifications.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  const panel = document.getElementById('androidAlarmPermissionPanel');
+  const button = document.getElementById('enableExactAlarmsButton');
+  const status = document.getElementById('exactAlarmPermissionStatus');
+
+  if (!panel || !button || !status) return;
+
+  const isAndroid =
+    window.Capacitor?.isNativePlatform?.() === true &&
+    window.Capacitor?.getPlatform?.() === 'android';
+
+  if (!isAndroid) return;
+
+  panel.hidden = false;
+
+  async function checkPermission() {
+    try {
+      const allowed =
+        await window.StoriesAndroidReminders?.checkExactAlarmPermission?.();
+
+      status.textContent = allowed
+        ? '✅ Exact alarm access is enabled.'
+        : '⚠️ Exact alarm access is not enabled yet.';
+    } catch (error) {
+      status.textContent = 'Could not check Android alarm permission.';
+    }
+  }
+
+  button.addEventListener('click', async function () {
+    button.disabled = true;
+    button.textContent = 'Opening Android settings...';
+    status.textContent = 'Please allow Alarms & reminders.';
+
+    try {
+      const result =
+        await window.StoriesAndroidReminders.requestExactAlarmAccess();
+
+      status.textContent = result.message;
+
+      if (result.granted) {
+        button.textContent = 'Exact reminders enabled';
+      } else {
+        button.textContent = 'Try again';
+      }
+    } catch (error) {
+      status.textContent = 'Could not open Android settings. Try again.';
+      button.textContent = 'Try again';
+    } finally {
+      button.disabled = false;
+      await checkPermission();
+    }
+  });
+
+  checkPermission();
+})();
+</script>
+
 <script src="js/whatsapp-shell.js"></script>
 </body>
 </html>
