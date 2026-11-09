@@ -1,0 +1,65 @@
+name: Build Stories Editor Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "android-build/**"
+      - ".github/workflows/android-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get repository files
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Android project dependencies
+        working-directory: android-build
+        run: npm install
+
+      - name: Copy Story Studio website into Android project
+        run: |
+          mkdir -p android-build/www
+          rsync -av \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='android-build' \
+            ./ android-build/www/
+
+      - name: Create Android project
+        working-directory: android-build
+        run: npx cap add android
+
+      - name: Synchronize Android project
+        working-directory: android-build
+        run: npx cap sync android
+
+      - name: Build test APK
+        working-directory: android-build/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Stories-Editor-Android-APK
+          path: android-build/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
