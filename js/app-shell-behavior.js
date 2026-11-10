@@ -1,9 +1,8 @@
-
 /* =====================================================
    CHANNEL STUDIO — APP SHELL BEHAVIOUR
    Android safe area + global wallpaper restoration
-   + Android notification click routing
-   Preserves the existing wallpaper database.
+   + reliable Android notification click routing
+   Preserves existing wallpaper data.
 ===================================================== */
 
 (function () {
@@ -15,6 +14,13 @@
   const BRIGHTNESS_KEY = 'studio_wallpaper_brightness';
 
   let notificationListenerRegistered = false;
+  let notificationRegistrationPromise = null;
+  let notificationRetryCount = 0;
+
+  const MAX_NOTIFICATION_RETRIES = 20;
+  const NOTIFICATION_RETRY_DELAY = 500;
+
+  /* ---------- ANDROID SAFE AREA ---------- */
 
   function applyAndroidSafeArea() {
     if (
@@ -24,12 +30,20 @@
       return;
     }
 
-    document.documentElement.classList.add('native-android-shell');
+    document.documentElement.classList.add(
+      'native-android-shell'
+    );
 
-    if (!document.getElementById('android-status-bar-background')) {
-      const statusBackground = document.createElement('div');
+    if (
+      !document.getElementById(
+        'android-status-bar-background'
+      )
+    ) {
+      const statusBackground =
+        document.createElement('div');
 
-      statusBackground.id = 'android-status-bar-background';
+      statusBackground.id =
+        'android-status-bar-background';
 
       Object.assign(statusBackground.style, {
         position: 'fixed',
@@ -45,7 +59,9 @@
       document.body.appendChild(statusBackground);
     }
 
-    if (document.getElementById('android-safe-area-fix')) {
+    if (
+      document.getElementById('android-safe-area-fix')
+    ) {
       return;
     }
 
@@ -66,22 +82,32 @@
     document.head.appendChild(style);
   }
 
-  /* ---------- ANDROID NOTIFICATION CLICK ---------- */
+  /* ---------- NOTIFICATION DESTINATION ---------- */
+
+  function getNotificationExtra(event) {
+    const notification = event?.notification || {};
+
+    return (
+      notification.extra ||
+      notification.data ||
+      event?.extra ||
+      {}
+    );
+  }
 
   function openPlannerFromNotification(event) {
     try {
-      const notification = event?.notification || {};
-      const extra = notification.extra || {};
+      const extra = getNotificationExtra(event);
 
-      // Planner reminders are intended to open Planner.
       const requestedPage = String(
         extra.page || 'planner.html'
       );
 
-      // Only allow navigation to this app's Planner page.
-      const targetPage =
-        requestedPage.split('?')[0].split('#')[0];
+      const targetPage = requestedPage
+        .split('?')[0]
+        .split('#')[0];
 
+      // Only allow this app's Planner page.
       if (targetPage !== 'planner.html') {
         window.location.assign('planner.html');
         return;
@@ -92,10 +118,11 @@
         window.location.href
       );
 
-      // Preserve the queue that generated the reminder.
       const slot = String(extra.slot || '');
 
-      if (['morning', 'lunch', 'evening'].includes(slot)) {
+      if (
+        ['morning', 'lunch', 'evening'].includes(slot)
+      ) {
         targetURL.searchParams.set('slot', slot);
       }
 
@@ -107,10 +134,14 @@
         window.location.search === targetURL.search
       ) {
         window.dispatchEvent(
-          new CustomEvent('planner:notification-opened', {
-            detail: { slot }
-          })
+          new CustomEvent(
+            'planner:notification-opened',
+            {
+              detail: { slot }
+            }
+          )
         );
+
         return;
       }
 
@@ -128,48 +159,100 @@
     }
   }
 
-  function registerAndroidNotificationClicks() {
-    if (notificationListenerRegistered) return;
+  /* ---------- ANDROID NOTIFICATION LISTENER ---------- */
 
-    const isAndroid =
+  function isAndroidApp() {
+    return (
       window.Capacitor?.isNativePlatform?.() === true &&
-      window.Capacitor?.getPlatform?.() === 'android';
+      window.Capacitor?.getPlatform?.() === 'android'
+    );
+  }
 
-    if (!isAndroid) return;
+  function registerAndroidNotificationClicks() {
+    if (
+      !isAndroidApp() ||
+      notificationListenerRegistered ||
+      notificationRegistrationPromise
+    ) {
+      return;
+    }
 
     const notifications =
       window.Capacitor?.Plugins?.LocalNotifications;
 
     if (!notifications?.addListener) {
-      console.warn(
-        'Android notification click listener is unavailable.'
-      );
+      scheduleNotificationRetry();
       return;
     }
 
-    notificationListenerRegistered = true;
+    try {
+      notificationRegistrationPromise = Promise.resolve(
+        notifications.addListener(
+          'localNotificationActionPerformed',
+          openPlannerFromNotification
+        )
+      );
 
-    notifications.addListener(
-      'localNotificationActionPerformed',
-      openPlannerFromNotification
-    ).catch(error => {
-      notificationListenerRegistered = false;
+      notificationRegistrationPromise
+        .then(() => {
+          notificationListenerRegistered = true;
+          notificationRetryCount = 0;
+
+          console.info(
+            'Story Studio: Android notification clicks are ready.'
+          );
+        })
+        .catch(error => {
+          console.warn(
+            'Android notification listener registration failed:',
+            error
+          );
+
+          notificationRegistrationPromise = null;
+          scheduleNotificationRetry();
+        });
+
+    } catch (error) {
+      notificationRegistrationPromise = null;
 
       console.warn(
-        'Could not register Android notification click listener:',
+        'Could not register Android notification clicks:',
         error
       );
-    });
+
+      scheduleNotificationRetry();
+    }
   }
 
-  // Restore the global wallpaper without changing its saved data.
+  function scheduleNotificationRetry() {
+    if (
+      !isAndroidApp() ||
+      notificationListenerRegistered ||
+      notificationRegistrationPromise ||
+      notificationRetryCount >= MAX_NOTIFICATION_RETRIES
+    ) {
+      return;
+    }
+
+    notificationRetryCount++;
+
+    window.setTimeout(() => {
+      registerAndroidNotificationClicks();
+    }, NOTIFICATION_RETRY_DELAY);
+  }
+
+  /* ---------- GLOBAL WALLPAPER ---------- */
+
   function applyGlobalWallpaper(blob) {
     if (!blob || !(blob instanceof Blob)) return;
 
-    let layer = document.getElementById('studioGlobalWallpaper');
+    let layer = document.getElementById(
+      'studioGlobalWallpaper'
+    );
 
     if (!layer) {
       layer = document.createElement('div');
+
       layer.id = 'studioGlobalWallpaper';
 
       Object.assign(layer.style, {
@@ -210,16 +293,20 @@
         brightness = savedBrightness;
       }
     } catch (error) {
-      // Continue with the default brightness.
+      // Continue with default brightness.
     }
 
-    const darkness = (100 - brightness) / 100 * 0.65;
+    const darkness =
+      ((100 - brightness) / 100) * 0.65;
 
     layer.style.backgroundImage =
       `linear-gradient(rgba(0,0,0,${darkness}), rgba(0,0,0,${darkness})), url("${imageUrl}")`;
 
-    document.documentElement.style.backgroundColor = 'transparent';
-    document.body.style.backgroundColor = 'transparent';
+    document.documentElement.style.backgroundColor =
+      'transparent';
+
+    document.body.style.backgroundColor =
+      'transparent';
   }
 
   function loadGlobalWallpaper() {
@@ -230,7 +317,10 @@
     try {
       request = indexedDB.open(DB_NAME, 1);
     } catch (error) {
-      console.warn('Wallpaper database could not open:', error);
+      console.warn(
+        'Wallpaper database could not open:',
+        error
+      );
       return;
     }
 
@@ -265,7 +355,9 @@
         };
 
         getRequest.onerror = function () {
-          console.warn('Could not restore saved wallpaper.');
+          console.warn(
+            'Could not restore saved wallpaper.'
+          );
         };
 
         transaction.oncomplete = function () {
@@ -277,15 +369,23 @@
         };
 
       } catch (error) {
-        console.warn('Wallpaper restoration failed:', error);
+        console.warn(
+          'Wallpaper restoration failed:',
+          error
+        );
+
         db.close();
       }
     };
 
     request.onerror = function () {
-      console.warn('Wallpaper database could not be opened.');
+      console.warn(
+        'Wallpaper database could not be opened.'
+      );
     };
   }
+
+  /* ---------- STARTUP ---------- */
 
   function start() {
     applyAndroidSafeArea();
@@ -302,5 +402,26 @@
   } else {
     start();
   }
+
+  // Capacitor may finish preparing its native plugins
+  // after the page's first startup event.
+  document.addEventListener(
+    'deviceready',
+    registerAndroidNotificationClicks
+  );
+
+  document.addEventListener(
+    'visibilitychange',
+    function () {
+      if (!document.hidden) {
+        registerAndroidNotificationClicks();
+      }
+    }
+  );
+
+  window.addEventListener(
+    'focus',
+    registerAndroidNotificationClicks
+  );
 
 })();
