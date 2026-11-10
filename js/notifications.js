@@ -103,6 +103,25 @@ async function request() {
   }
 }
 
+/* ---------- NOTIFICATION DESTINATION ---------- */
+
+function plannerURL(slotName) {
+  const validSlot = SLOT_NAMES.includes(slotName)
+    ? slotName
+    : '';
+
+  const url = new URL(
+    'planner.html',
+    window.location.href
+  );
+
+  if (validSlot) {
+    url.searchParams.set('slot', validSlot);
+  }
+
+  return url.pathname + url.search;
+}
+
 /* ---------- SEND NOTIFICATION ---------- */
 
 async function send(title, body, options = {}) {
@@ -114,12 +133,14 @@ async function send(title, body, options = {}) {
 
   playTone(false);
 
+  const destination = options.url || 'planner.html';
+
   const opts = {
     body: String(body || ''),
     tag: options.tag || 'channel-studio-' + Date.now(),
     renotify: false,
     data: {
-      url: options.url || 'planner.html'
+      url: destination
     },
     icon: 'assets/icons/icon-192.png',
     badge: 'assets/icons/icon-192.png'
@@ -152,8 +173,7 @@ async function send(title, body, options = {}) {
       try {
         window.focus();
 
-        window.location.href =
-          options.url || 'planner.html';
+        window.location.href = destination;
       } catch (_) {}
 
       notification.close();
@@ -270,18 +290,14 @@ async function checkPlannerReminders() {
 
       if (scheduled === null) continue;
 
-      // Do not notify before the scheduled time.
       if (now < scheduled) continue;
 
-      // Do not remind about a queue already completed today.
       if (completedToday(settings, slotName)) continue;
 
       const reminderId = today + '-' + slotName;
 
-      // Already notified today.
       if (log[reminderId]) continue;
 
-      // Prevent overlapping notification attempts.
       if (inFlight.has(reminderId)) continue;
 
       inFlight.add(reminderId);
@@ -301,11 +317,10 @@ async function checkPlannerReminders() {
           body,
           {
             tag: 'planner-' + reminderId,
-            url: 'planner.html'
+            url: plannerURL(slotName)
           }
         );
 
-        // Only record successful notification delivery.
         if (result === true) {
           log[reminderId] = {
             sent: true,
@@ -321,7 +336,6 @@ async function checkPlannerReminders() {
       }
     }
 
-    // Keep the reminder log reasonably small.
     const keys = Object.keys(log);
 
     if (keys.length > 100) {
@@ -346,10 +360,8 @@ async function checkPlannerReminders() {
 function startPlannerReminders() {
   if (reminderTimer) return;
 
-  // Check immediately when Planner starts.
   checkPlannerReminders();
 
-  // Check regularly while the app is active.
   reminderTimer = window.setInterval(() => {
     checkPlannerReminders();
   }, 15000);
