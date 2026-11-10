@@ -1,14 +1,14 @@
 
 /* =====================================================
    STORY STUDIO — SERVICE WORKER
-   Version: 28
+   Version: 29
 
    Features:
    - Offline page support
    - Automatic application updates
    - Cache migration
    - Network-first page loading
-   - Background asset refresh
+   - Network-first JavaScript and CSS
    - Offline fallback
    - Notification click navigation
    - Safe cache cleanup
@@ -20,7 +20,7 @@
    CACHE CONFIGURATION
 ===================================================== */
 
-const CACHE_VERSION = 'channel-studio-shell-v28';
+const CACHE_VERSION = 'channel-studio-shell-v29';
 const CACHE_PREFIX = 'channel-studio-shell-';
 
 const FETCH_TIMEOUT = 8000;
@@ -138,6 +138,19 @@ async function saveResponse(cache, request, response) {
   }
 }
 
+function isCodeAsset(request, url) {
+  const destination = request.destination || '';
+
+  if (
+    destination === 'script' ||
+    destination === 'style'
+  ) {
+    return true;
+  }
+
+  return /\.(js|css)$/i.test(url.pathname);
+}
+
 /* =====================================================
    INSTALL
 ===================================================== */
@@ -147,7 +160,7 @@ self.addEventListener('install', event => {
     const cache = await caches.open(CACHE_VERSION);
 
     console.log(
-      '[Story Studio] Installing version 28...'
+      '[Story Studio] Installing version 29...'
     );
 
     /* ---------------------------------------------
@@ -228,7 +241,6 @@ self.addEventListener('install', event => {
       `[Story Studio] Core cache processed: ${successful}/${CORE_FILES.length}`
     );
 
-    /* Activate the new worker when installation completes. */
     await self.skipWaiting();
 
   })());
@@ -242,7 +254,6 @@ self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const cacheNames = await caches.keys();
 
-    /* Delete only old Story Studio caches. */
     await Promise.all(
       cacheNames
         .filter(name =>
@@ -255,10 +266,9 @@ self.addEventListener('activate', event => {
     await self.clients.claim();
 
     console.log(
-      '[Story Studio] Version 28 activated.'
+      '[Story Studio] Version 29 activated.'
     );
 
-    /* Notify open application tabs. */
     const clients = await self.clients.matchAll({
       type: 'window',
       includeUncontrolled: true
@@ -357,10 +367,8 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(request.url);
 
-  /* Only handle files belonging to this application. */
   if (url.origin !== self.location.origin) return;
 
-  /* Do not interfere with partial media requests. */
   if (request.headers.has('range')) return;
 
   event.respondWith((async () => {
@@ -382,6 +390,31 @@ self.addEventListener('fetch', event => {
       } catch (error) {
         console.warn(
           '[Story Studio] Page loaded from offline cache:',
+          url.pathname
+        );
+      }
+
+      return offlineResponse(request);
+    }
+
+    /* ---------------------------------------------
+       JAVASCRIPT AND CSS — NETWORK FIRST
+       Prevents old cached code from being served
+       when a newer version is available.
+    --------------------------------------------- */
+
+    if (isCodeAsset(request, url)) {
+      try {
+        const response = await fetchWithTimeout(request);
+
+        if (response && response.ok) {
+          await saveResponse(cache, request, response);
+          return response;
+        }
+
+      } catch (error) {
+        console.warn(
+          '[Story Studio] Code asset using offline cache:',
           url.pathname
         );
       }
@@ -452,7 +485,6 @@ self.addEventListener('notificationclick', event => {
         self.registration.scope
       );
 
-      /* Never navigate outside this app's origin. */
       if (
         targetURL.origin !== self.location.origin ||
         !targetURL.href.startsWith(self.registration.scope)
