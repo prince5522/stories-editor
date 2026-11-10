@@ -1,6 +1,7 @@
+
 /* =====================================================
    STORY STUDIO — SERVICE WORKER
-   Version: 27
+   Version: 28
 
    Features:
    - Offline page support
@@ -19,7 +20,7 @@
    CACHE CONFIGURATION
 ===================================================== */
 
-const CACHE_VERSION = 'channel-studio-shell-v27';
+const CACHE_VERSION = 'channel-studio-shell-v28';
 const CACHE_PREFIX = 'channel-studio-shell-';
 
 const FETCH_TIMEOUT = 8000;
@@ -61,6 +62,7 @@ const SCRIPTS = [
   'js/transitions.js',
   'js/effects.js',
   'js/notifications.js',
+  'js/native-notifications.js',
   'js/feedback.js',
   'js/app.js',
   'js/story-engine.js',
@@ -69,6 +71,7 @@ const SCRIPTS = [
   'js/creator-lab.js',
   'js/media.js',
   'js/media-attach.js',
+  'js/android-import.js',
   'js/planner-media.js',
   'js/planner-story-slots.js',
   'js/planner-publish.js',
@@ -144,7 +147,7 @@ self.addEventListener('install', event => {
     const cache = await caches.open(CACHE_VERSION);
 
     console.log(
-      '[Story Studio] Installing version 27...'
+      '[Story Studio] Installing version 28...'
     );
 
     /* ---------------------------------------------
@@ -252,7 +255,7 @@ self.addEventListener('activate', event => {
     await self.clients.claim();
 
     console.log(
-      '[Story Studio] Version 27 activated.'
+      '[Story Studio] Version 28 activated.'
     );
 
     /* Notify open application tabs. */
