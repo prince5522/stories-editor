@@ -2,6 +2,7 @@
 /* =========================================
    STORY STUDIO AUTHENTICATION
    Email + Password + Username
+   One-time login with offline access
    Uses the shared Supabase Cloud system
 ========================================= */
 
@@ -30,6 +31,24 @@
   let usernameInput = null;
   let authListener = null;
 
+  /* ---------------------------------------
+     OFFLINE ACCESS
+  --------------------------------------- */
+
+  function hasOfflineAccess() {
+    try {
+      return localStorage.getItem(
+        'channelStudio.authenticated'
+      ) === '1';
+    } catch (error) {
+      console.warn(
+        'Could not read offline access:',
+        error
+      );
+      return false;
+    }
+  }
+
   function rememberOfflineAccess(username) {
     try {
       localStorage.setItem(
@@ -49,6 +68,13 @@
         error
       );
     }
+  }
+
+  function isPasswordRecovery() {
+    return (
+      window.location.search.includes('type=recovery') ||
+      window.location.hash.includes('type=recovery')
+    );
   }
 
   /* ---------------------------------------
@@ -87,18 +113,28 @@
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
+      const scriptURL = new URL(
+        src,
+        window.location.href
+      ).href;
+
       const existing = Array.from(
         document.scripts
-      ).find(script =>
-        script.src === new URL(
-          src,
-          window.location.href
-        ).href
-      );
+      ).find(script => script.src === scriptURL);
 
       if (
         existing &&
         existing.dataset.loaded === 'true'
+      ) {
+        resolve();
+        return;
+      }
+
+      if (
+        existing &&
+        window.StudioStore &&
+        window.supabase?.createClient &&
+        window.ChannelStudioCloud
       ) {
         resolve();
         return;
@@ -131,15 +167,6 @@
         },
         { once: true }
       );
-
-      if (
-        existing &&
-        window.StudioStore &&
-        window.supabase?.createClient &&
-        window.ChannelStudioCloud
-      ) {
-        resolve();
-      }
     });
   }
 
@@ -148,7 +175,6 @@
   --------------------------------------- */
 
   async function initializeCloud() {
-    // 1. Ensure local storage is available.
     if (!window.StudioStore) {
       await loadScript('js/storage.js');
     }
@@ -159,16 +185,12 @@
       );
     }
 
-    // 2. Supabase is loaded by login.html when online.
-    // Do not wait for a CDN script that may already
-    // have failed while the device was offline.
     if (!window.supabase?.createClient) {
       throw new Error(
-        'Supabase library is unavailable. Check your connection.'
+        'Supabase library is unavailable.'
       );
     }
 
-    // 3. Load the shared cloud system.
     if (!window.ChannelStudioCloud) {
       await loadScript('js/supabase-cloud.js');
     }
@@ -181,7 +203,6 @@
       );
     }
 
-    // 4. Wait for cloud initialization.
     if (
       cloud.ready &&
       typeof cloud.ready.then === 'function'
@@ -196,7 +217,6 @@
       }
     }
 
-    // 5. Get the initialized client.
     client = cloud.getClient();
 
     if (!client) {
@@ -457,9 +477,9 @@
         return;
       }
 
-      if (!client) {
+      if (!client || !cloud) {
         showMessage(
-          'Account service is unavailable. Refresh the page.'
+          'Account service is unavailable. Connect to the internet and refresh.'
         );
 
         return;
@@ -614,7 +634,7 @@
 
       if (!client || !cloud) {
         showMessage(
-          'Account service is unavailable. Please refresh the page.'
+          'Account service is unavailable. Please connect to the internet and refresh.'
         );
 
         return;
@@ -726,35 +746,16 @@
 
       updateButtonText();
 
-      // Check for a previously successful login.
-      let hasOfflineAccess = false;
+      // Password recovery must always be handled
+      // through the online account recovery flow.
+      const recovery = isPasswordRecovery();
 
-      try {
-        hasOfflineAccess =
-          localStorage.getItem(
-            'channelStudio.authenticated'
-          ) === '1';
-      } catch (storageError) {
-        console.warn(
-          'Could not read offline login status:',
-          storageError
-        );
-      }
-
-      const isPasswordRecovery =
-        window.location.search.includes(
-          'type=recovery'
-        ) ||
-        window.location.hash.includes(
-          'type=recovery'
-        );
-
-      // Previously logged-in users can open the app
-      // immediately when the device is offline.
+      // Returning users have already authenticated.
+      // Do not make them sign in again just because
+      // the app cannot reach Supabase.
       if (
-        hasOfflineAccess &&
-        !isPasswordRecovery &&
-        navigator.onLine === false
+        hasOfflineAccess() &&
+        !recovery
       ) {
         openHome();
         return;
@@ -762,7 +763,6 @@
 
       setLoading(true, 'Connecting…');
 
-      // Wait until the shared cloud system is ready.
       await initializeCloud();
 
       const {
@@ -792,7 +792,7 @@
       if (
         session?.user &&
         !session.user.is_anonymous &&
-        !isPasswordRecovery
+        !recovery
       ) {
         rememberOfflineAccess(
           session.user.user_metadata?.username ||
@@ -805,7 +805,7 @@
       }
 
       // Password reset link.
-      if (isPasswordRecovery) {
+      if (recovery) {
         setMode('recovery');
 
         showMessage(
@@ -822,37 +822,11 @@
         error
       );
 
-      // Allow returning users to continue locally
-      // when the account service is unavailable.
-      let hasOfflineAccess = false;
-
-      try {
-        hasOfflineAccess =
-          localStorage.getItem(
-            'channelStudio.authenticated'
-          ) === '1';
-      } catch (storageError) {
-        console.warn(
-          'Could not read offline login status:',
-          storageError
-        );
-      }
-
-      const isPasswordRecovery =
-        window.location.search.includes(
-          'type=recovery'
-        ) ||
-        window.location.hash.includes(
-          'type=recovery'
-        );
-
+      // If the account service is unavailable,
+      // returning users can still use local Story Studio.
       if (
-        hasOfflineAccess &&
-        !isPasswordRecovery &&
-        (
-          navigator.onLine === false ||
-          !window.supabase?.createClient
-        )
+        hasOfflineAccess() &&
+        !isPasswordRecovery()
       ) {
         openHome();
         return;
