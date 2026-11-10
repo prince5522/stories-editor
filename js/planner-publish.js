@@ -130,12 +130,6 @@ function isSlotDue(slot) {
 
 /* ---------- EPISODE COLLECTIONS ---------- */
 
-/*
-  Returns every episode belonging to the selected story.
-
-  Ready-Made episodes are not limited to 13 per season.
-  Their actual uploaded season and episode numbers are used.
-*/
 function allStoryEpisodes(slot) {
   if (slot.type === 'ready') {
     return (get('readyMadeEpisodes', []) || [])
@@ -172,11 +166,6 @@ function allStoryEpisodes(slot) {
     );
 }
 
-/*
-  Returns episodes still available for posting.
-
-  Ready-Made episodes already marked as posted are skipped.
-*/
 function storyEpisodes(slot) {
   const episodes = allStoryEpisodes(slot);
 
@@ -196,13 +185,6 @@ function getPosition(slot) {
   };
 }
 
-/*
-  Finds the first available episode at or after the
-  configured starting position.
-
-  Episodes before the configured position are skipped.
-  This allows a queue to begin at any uploaded episode.
-*/
 function findNextEpisode(slot) {
   const position = getPosition(slot);
 
@@ -291,28 +273,39 @@ function openChannel(url) {
 
 async function copyText(text) {
   try {
-    await navigator.clipboard.writeText(text);
-    return true;
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
   } catch (error) {
-    const area = document.createElement('textarea');
-
-    area.value = text;
-    area.style.position = 'fixed';
-    area.style.opacity = '0';
-
-    document.body.appendChild(area);
-    area.select();
-
-    let copied = false;
-
-    try {
-      copied = document.execCommand('copy');
-    } catch (_) {}
-
-    area.remove();
-
-    return copied;
+    console.warn('Clipboard API failed:', error);
   }
+
+  const area = document.createElement('textarea');
+
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.position = 'fixed';
+  area.style.left = '-9999px';
+  area.style.top = '0';
+  area.style.opacity = '0';
+
+  document.body.appendChild(area);
+  area.focus();
+  area.select();
+  area.setSelectionRange(0, area.value.length);
+
+  let copied = false;
+
+  try {
+    copied = document.execCommand('copy');
+  } catch (error) {
+    console.warn('Clipboard fallback failed:', error);
+  }
+
+  area.remove();
+
+  return copied;
 }
 
 /* ---------- PENDING POST ---------- */
@@ -326,11 +319,6 @@ function getPendingEpisode(slotName) {
 
   if (!slot) return null;
 
-  /*
-    Search the complete collection, not only unpublished episodes.
-    This keeps an in-progress episode recoverable if its posted
-    status was saved before the return flow completed.
-  */
   return allStoryEpisodes(slot).find(ep =>
     String(ep.id) === String(pending.episodeId)
   ) || null;
@@ -412,9 +400,12 @@ async function startAdvertisement(slotName) {
 
   setPending(slotName, 'advert-opened', ep);
 
+  // Start the clipboard operation before opening WhatsApp.
+  const copyPromise = copyText(advert);
+
   openChannel(slot.channelUrl);
 
-  const copied = await copyText(advert);
+  const copied = await copyPromise;
 
   if (!copied) {
     window.prompt('Copy your advertisement text:', advert);
@@ -423,7 +414,9 @@ async function startAdvertisement(slotName) {
   renderPostingControls();
 
   window.studioToast?.(
-    'Advertisement copied. Publish it in WhatsApp, then return here.'
+    copied
+      ? 'Advertisement copied. Publish it in WhatsApp, then return here.'
+      : 'Automatic copying failed. Please copy the advertisement manually.'
   );
 }
 
@@ -462,9 +455,12 @@ async function prepareEpisode(slotName) {
 
   saveSettings();
 
+  // Start copying the episode before opening WhatsApp.
+  const copyPromise = copyText(text);
+
   openChannel(slot.channelUrl);
 
-  const copied = await copyText(text);
+  const copied = await copyPromise;
 
   if (!copied) {
     window.prompt('Copy your episode text:', text);
@@ -473,7 +469,9 @@ async function prepareEpisode(slotName) {
   renderPostingControls();
 
   window.studioToast?.(
-    'Episode copied. Publish it in WhatsApp, then return here.'
+    copied
+      ? 'Episode copied. Publish it in WhatsApp, then return here.'
+      : 'Automatic copying failed. Please copy the episode manually.'
   );
 }
 
@@ -493,13 +491,6 @@ function advancePosition(slot, ep) {
   );
 
   if (slot.type === 'ready') {
-    /*
-      Ready-Made stories have no fixed 13-episode limit.
-
-      Find the next real uploaded episode in the same story.
-      This also handles gaps in episode numbers and transitions
-      between seasons using the actual uploaded metadata.
-    */
     const all = allStoryEpisodes(slot);
 
     const currentIndex = all.findIndex(item =>
@@ -516,11 +507,6 @@ function advancePosition(slot, ep) {
       slot.season = Number(next.season_number || 1);
       slot.episode = Number(next.episode_number || 1);
     } else {
-      /*
-        No later episode is currently uploaded.
-        Keep the pointer after the last posted episode so
-        newly uploaded episodes can be found later.
-      */
       slot.season = season;
       slot.episode = episode + 1;
     }
@@ -528,10 +514,6 @@ function advancePosition(slot, ep) {
     return;
   }
 
-  /*
-    Preserve the existing Serial-story progression.
-    This Ready-Made repair does not change the Serial rule.
-  */
   if (episode >= 13) {
     slot.season = season + 1;
     slot.episode = 1;
@@ -607,10 +589,6 @@ function completeEpisodeOnReturn(slotName) {
   settings.slotRuns = settings.slotRuns || {};
   settings.slotRuns[slotName] = todayKey();
 
-  /*
-    Save the Ready-Made posted status before advancing the queue.
-    The episode remains recoverable through allStoryEpisodes().
-  */
   if (slot.type === 'ready') {
     markReadyMadePosted(ep);
   }
@@ -1044,8 +1022,6 @@ function bindEvents() {
   window.addEventListener('pageshow', () => {
     settings = readSettings();
 
-    // Recover a posting sequence if the app was reopened
-    // after returning from WhatsApp.
     handleReturnFromWhatsApp();
     renderPostingControls();
   });
