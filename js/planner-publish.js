@@ -1,4 +1,11 @@
 
+/* =====================================================
+   STORY STUDIO — PLANNER PUBLISHING ENGINE
+   Complete publishing workflow
+   Advertisement → WhatsApp → Episode → WhatsApp
+   Includes clipboard-first publishing and queue tracking.
+===================================================== */
+
 (function () {
 'use strict';
 
@@ -49,8 +56,10 @@ function todayKey() {
 function dateKey(value) {
   if (!value) return '';
 
-  if (typeof value === 'string' &&
-      /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  if (
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value)
+  ) {
     return value;
   }
 
@@ -100,8 +109,10 @@ function alreadyCompletedToday(slotName) {
 
   const records = settings.completed[slotName];
 
-  if (Array.isArray(records) &&
-      records.some(isCompletedToday)) {
+  if (
+    Array.isArray(records) &&
+    records.some(isCompletedToday)
+  ) {
     return true;
   }
 
@@ -115,10 +126,12 @@ function isSlotDue(slot) {
   const hour = Number(parts[0]);
   const minute = Number(parts[1]);
 
-  if (!Number.isFinite(hour) ||
-      !Number.isFinite(minute) ||
-      hour < 0 || hour > 23 ||
-      minute < 0 || minute > 59) {
+  if (
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute) ||
+    hour < 0 || hour > 23 ||
+    minute < 0 || minute > 59
+  ) {
     return false;
   }
 
@@ -134,7 +147,8 @@ function allStoryEpisodes(slot) {
   if (slot.type === 'ready') {
     return (get('readyMadeEpisodes', []) || [])
       .filter(ep => {
-        const name = ep.story_title ||
+        const name =
+          ep.story_title ||
           ep.storyName ||
           ep.title ||
           'Ready-made episodes';
@@ -202,8 +216,10 @@ function findNextEpisode(slot) {
     );
 
     return season > position.season ||
-      (season === position.season &&
-       episode >= position.episode);
+      (
+        season === position.season &&
+        episode >= position.episode
+      );
   }) || null;
 }
 
@@ -224,7 +240,9 @@ function episodeLabel(ep, type) {
 function episodeText(ep, type) {
   if (type === 'ready') {
     const storyName =
-      ep.story_title || ep.storyName || 'Untitled story';
+      ep.story_title ||
+      ep.storyName ||
+      'Untitled story';
 
     return [
       storyName,
@@ -271,24 +289,38 @@ function openChannel(url) {
   return true;
 }
 
-async function copyText(text) {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch (error) {
-    console.warn('Clipboard API failed:', error);
+/*
+  IMPORTANT:
+  Try document.execCommand('copy') synchronously
+  during the original button click.
+
+  This avoids losing the browser's user-gesture
+  permission before WhatsApp is opened.
+*/
+
+function copyText(text) {
+  const value = String(text || '');
+
+  if (!value.trim()) {
+    console.warn('Nothing was available to copy.');
+    return false;
   }
 
   const area = document.createElement('textarea');
 
-  area.value = text;
+  area.value = value;
   area.setAttribute('readonly', '');
-  area.style.position = 'fixed';
-  area.style.left = '-9999px';
-  area.style.top = '0';
-  area.style.opacity = '0';
+
+  Object.assign(area.style, {
+    position: 'fixed',
+    left: '0',
+    top: '0',
+    width: '2px',
+    height: '2px',
+    opacity: '0.01',
+    fontSize: '16px',
+    zIndex: '999999'
+  });
 
   document.body.appendChild(area);
   area.focus();
@@ -300,12 +332,34 @@ async function copyText(text) {
   try {
     copied = document.execCommand('copy');
   } catch (error) {
-    console.warn('Clipboard fallback failed:', error);
+    console.warn('Synchronous clipboard copy failed:', error);
   }
 
   area.remove();
 
-  return copied;
+  if (copied) return true;
+
+  // Fallback for browsers where execCommand is unavailable.
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(value)
+      .then(() => true)
+      .catch(error => {
+        console.warn('Clipboard API failed:', error);
+        return false;
+      });
+  }
+
+  return false;
+}
+
+async function finishCopy(text) {
+  let result = copyText(text);
+
+  if (result && typeof result.then === 'function') {
+    result = await result;
+  }
+
+  return result === true;
 }
 
 /* ---------- PENDING POST ---------- */
@@ -400,23 +454,25 @@ async function startAdvertisement(slotName) {
 
   setPending(slotName, 'advert-opened', ep);
 
-  // Start the clipboard operation before opening WhatsApp.
-  const copyPromise = copyText(advert);
-
-  openChannel(slot.channelUrl);
-
-  const copied = await copyPromise;
+  // Copy first, before leaving Story Studio.
+  const copied = await finishCopy(advert);
 
   if (!copied) {
-    window.prompt('Copy your advertisement text:', advert);
+    window.prompt(
+      'Automatic copying was unsuccessful. Copy your advertisement here:',
+      advert
+    );
   }
+
+  // Open WhatsApp only after the clipboard attempt.
+  openChannel(slot.channelUrl);
 
   renderPostingControls();
 
   window.studioToast?.(
     copied
-      ? 'Advertisement copied. Publish it in WhatsApp, then return here.'
-      : 'Automatic copying failed. Please copy the advertisement manually.'
+      ? '✅ Advertisement copied. Paste it in WhatsApp!'
+      : 'Please copy the advertisement manually.'
   );
 }
 
@@ -427,9 +483,11 @@ async function prepareEpisode(slotName) {
 
   const pending = settings.pending;
 
-  if (!pending ||
-      pending.slot !== slotName ||
-      pending.stage !== 'advert-confirmed') {
+  if (
+    !pending ||
+    pending.slot !== slotName ||
+    pending.stage !== 'advert-confirmed'
+  ) {
     window.studioToast?.(
       'The advertisement stage is not complete.'
     );
@@ -448,6 +506,13 @@ async function prepareEpisode(slotName) {
 
   const text = episodeText(ep, slot.type);
 
+  if (!text || !String(text).trim()) {
+    window.studioToast?.(
+      'The episode has no text to copy.'
+    );
+    return;
+  }
+
   pending.stage = 'episode-opened';
   pending.episodeLabel = episodeLabel(ep, slot.type);
   pending.leftAppAt = null;
@@ -455,23 +520,24 @@ async function prepareEpisode(slotName) {
 
   saveSettings();
 
-  // Start copying the episode before opening WhatsApp.
-  const copyPromise = copyText(text);
-
-  openChannel(slot.channelUrl);
-
-  const copied = await copyPromise;
+  // Copy the complete episode before opening WhatsApp.
+  const copied = await finishCopy(text);
 
   if (!copied) {
-    window.prompt('Copy your episode text:', text);
+    window.prompt(
+      'Automatic copying was unsuccessful. Copy your episode here:',
+      text
+    );
   }
+
+  openChannel(slot.channelUrl);
 
   renderPostingControls();
 
   window.studioToast?.(
     copied
-      ? 'Episode copied. Publish it in WhatsApp, then return here.'
-      : 'Automatic copying failed. Please copy the episode manually.'
+      ? '✅ Full episode copied. Paste it in WhatsApp!'
+      : 'Please copy the episode manually.'
   );
 }
 
@@ -545,9 +611,11 @@ function markReadyMadePosted(ep) {
 function completeEpisodeOnReturn(slotName) {
   const pending = settings.pending;
 
-  if (!pending ||
-      pending.slot !== slotName ||
-      pending.stage !== 'episode-opened') {
+  if (
+    !pending ||
+    pending.slot !== slotName ||
+    pending.stage !== 'episode-opened'
+  ) {
     return false;
   }
 
@@ -743,8 +811,10 @@ function cancelAnyPending() {
 }
 
 function cancelPending(slotName) {
-  if (!settings.pending ||
-      settings.pending.slot !== slotName) return;
+  if (
+    !settings.pending ||
+    settings.pending.slot !== slotName
+  ) return;
 
   cancelAnyPending();
 }
@@ -857,8 +927,10 @@ function renderPostingControls() {
       return;
     }
 
-    if (isPending &&
-        pending.stage === 'advert-opened') {
+    if (
+      isPending &&
+      pending.stage === 'advert-opened'
+    ) {
       controls.innerHTML = `
         <p><strong>📢 Advertisement stage</strong></p>
         <p class="small muted">
@@ -874,8 +946,10 @@ function renderPostingControls() {
       return;
     }
 
-    if (isPending &&
-        pending.stage === 'advert-confirmed') {
+    if (
+      isPending &&
+      pending.stage === 'advert-confirmed'
+    ) {
       controls.innerHTML = `
         <p><strong>✅ Advertisement stage complete</strong></p>
         <p class="small muted">
@@ -895,8 +969,10 @@ function renderPostingControls() {
       return;
     }
 
-    if (isPending &&
-        pending.stage === 'episode-opened') {
+    if (
+      isPending &&
+      pending.stage === 'episode-opened'
+    ) {
       controls.innerHTML = `
         <p><strong>📖 Episode stage</strong></p>
         <p class="small muted">
@@ -994,10 +1070,12 @@ function bindEvents() {
     if (document.hidden) {
       const pending = settings?.pending;
 
-      if (pending &&
-          ['advert-opened', 'episode-opened'].includes(
-            pending.stage
-          )) {
+      if (
+        pending &&
+        ['advert-opened', 'episode-opened'].includes(
+          pending.stage
+        )
+      ) {
         pending.leftAppAt = Date.now();
         pending.returnPrompted = false;
         saveSettings();
@@ -1080,7 +1158,7 @@ function init() {
   }, 15000);
 
   console.log(
-    'Channel Studio: all three daily queues completion checks loaded.'
+    'Story Studio: all three daily queues and clipboard publishing loaded.'
   );
 }
 
