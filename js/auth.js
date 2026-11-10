@@ -108,7 +108,7 @@
   }
 
   /* ---------------------------------------
-     SCRIPT LOADER
+     DYNAMIC SCRIPT LOADER
   --------------------------------------- */
 
   function loadScript(src) {
@@ -118,41 +118,84 @@
         window.location.href
       ).href;
 
-      const existing = Array.from(
-        document.scripts
-      ).find(script => script.src === scriptURL);
-
+      // Avoid loading Supabase more than once.
       if (
-        existing &&
-        existing.dataset.loaded === 'true'
+        src.includes('supabase-js') &&
+        window.supabase?.createClient
       ) {
         resolve();
         return;
       }
 
       if (
-        existing &&
-        window.StudioStore &&
-        window.supabase?.createClient &&
+        src.includes('storage.js') &&
+        window.StudioStore
+      ) {
+        resolve();
+        return;
+      }
+
+      if (
+        src.includes('supabase-cloud.js') &&
         window.ChannelStudioCloud
       ) {
         resolve();
         return;
       }
 
-      const script =
-        existing || document.createElement('script');
+      let script = Array.from(
+        document.scripts
+      ).find(item => item.src === scriptURL);
 
-      if (!existing) {
+      // A previously loaded script is ready.
+      if (script?.dataset.loaded === 'true') {
+        resolve();
+        return;
+      }
+
+      // Remove a failed or stale external script.
+      if (
+        script &&
+        src.includes('supabase-js') &&
+        !window.supabase?.createClient
+      ) {
+        script.remove();
+        script = null;
+      }
+
+      // Reuse a script that is currently loading.
+      if (script?.dataset.loading === 'true') {
+        script.addEventListener(
+          'load',
+          () => resolve(),
+          { once: true }
+        );
+
+        script.addEventListener(
+          'error',
+          () => reject(
+            new Error('Could not load ' + src)
+          ),
+          { once: true }
+        );
+
+        return;
+      }
+
+      if (!script) {
+        script = document.createElement('script');
         script.src = src;
         script.async = true;
         document.head.appendChild(script);
       }
 
+      script.dataset.loading = 'true';
+
       script.addEventListener(
         'load',
         () => {
           script.dataset.loaded = 'true';
+          script.dataset.loading = 'false';
           resolve();
         },
         { once: true }
@@ -161,6 +204,8 @@
       script.addEventListener(
         'error',
         () => {
+          script.dataset.loading = 'false';
+
           reject(
             new Error('Could not load ' + src)
           );
@@ -182,6 +227,14 @@
     if (!window.StudioStore) {
       throw new Error(
         'Local storage could not initialize.'
+      );
+    }
+
+    // Load Supabase only when an online account
+    // operation actually needs it.
+    if (!window.supabase?.createClient) {
+      await loadScript(
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
       );
     }
 
@@ -477,17 +530,13 @@
         return;
       }
 
-      if (!client || !cloud) {
-        showMessage(
-          'Account service is unavailable. Connect to the internet and refresh.'
-        );
-
-        return;
-      }
-
-      setLoading(true, 'Sending link…');
+      setLoading(true, 'Connecting…');
 
       try {
+        if (!client || !cloud) {
+          await initializeCloud();
+        }
+
         const result =
           await cloud.resetPassword(email);
 
@@ -632,14 +681,6 @@
 
       if (busy) return;
 
-      if (!client || !cloud) {
-        showMessage(
-          'Account service is unavailable. Please connect to the internet and refresh.'
-        );
-
-        return;
-      }
-
       clearMessage();
 
       const email = emailInput.value.trim();
@@ -698,9 +739,15 @@
         }
       }
 
-      setLoading(true);
+      setLoading(true, 'Connecting…');
 
       try {
+        // Initialize the cloud system only when
+        // an actual account operation is requested.
+        if (!client || !cloud) {
+          await initializeCloud();
+        }
+
         if (mode === 'login') {
           await signIn(email, password);
 
@@ -737,6 +784,16 @@
   --------------------------------------- */
 
   async function initialize() {
+    // Check the saved access flag before attempting
+    // any network-dependent account initialization.
+    if (
+      hasOfflineAccess() &&
+      !isPasswordRecovery()
+    ) {
+      openHome();
+      return;
+    }
+
     try {
       validatePage();
 
@@ -746,20 +803,7 @@
 
       updateButtonText();
 
-      // Password recovery must always be handled
-      // through the online account recovery flow.
       const recovery = isPasswordRecovery();
-
-      // Returning users have already authenticated.
-      // Do not make them sign in again just because
-      // the app cannot reach Supabase.
-      if (
-        hasOfflineAccess() &&
-        !recovery
-      ) {
-        openHome();
-        return;
-      }
 
       setLoading(true, 'Connecting…');
 
@@ -822,8 +866,8 @@
         error
       );
 
-      // If the account service is unavailable,
-      // returning users can still use local Story Studio.
+      // Returning users can still use the local app
+      // if the account service is unavailable.
       if (
         hasOfflineAccess() &&
         !isPasswordRecovery()
