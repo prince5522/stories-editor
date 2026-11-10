@@ -829,11 +829,19 @@
 (async function () {
   'use strict';
 
-  const loginPage = 'login.html';
   const OFFLINE_AUTH_KEY = 'channelStudio.authenticated';
+  const USERNAME_KEY = 'channelStudio.username';
+
+  function hasOfflineAccess() {
+    try {
+      return localStorage.getItem(OFFLINE_AUTH_KEY) === '1';
+    } catch (error) {
+      return false;
+    }
+  }
 
   function redirectToLogin() {
-    window.location.replace(loginPage);
+    window.location.replace('login.html');
   }
 
   function loadLocalScript(src) {
@@ -904,86 +912,10 @@
     ]);
   }
 
-  try {
-    // Load local storage first.
-    await loadLocalScript('js/storage.js');
-
-    // Try to load Supabase.
-    const supabaseAvailable = await loadSupabase();
-
-    // Start cloud system only when Supabase is ready.
-    if (
-      supabaseAvailable &&
-      !window.ChannelStudioCloud
-    ) {
-      await loadLocalScript('js/supabase-cloud.js');
-    }
-
-    const cloud = window.ChannelStudioCloud;
-
-    let user = null;
-    let registeredUser = false;
-
-    // Check registered account when possible.
-    if (cloud && supabaseAvailable) {
-      try {
-        await waitForCloud(cloud.ready);
-
-        user = await waitForCloud(
-          cloud.getUser(),
-          3000
-        );
-
-        registeredUser =
-          !!user && user.is_anonymous !== true;
-
-      } catch (error) {
-        console.warn(
-          'Cloud unavailable. Checking local access.',
-          error
-        );
-      }
-    }
-
-    // Allow previously logged-in users to continue locally.
-    const offlineAccess =
-      !registeredUser &&
-      localStorage.getItem(OFFLINE_AUTH_KEY) === '1';
-
-    if (!registeredUser && !offlineAccess) {
-      redirectToLogin();
-      return;
-    }
-
-    // Restore account username.
-    let username = '';
-
-    if (registeredUser) {
-      if (typeof cloud.getUsername === 'function') {
-        username =
-          await Promise.resolve(
-            cloud.getUsername()
-          ) || '';
-      }
-
-      if (!username && user.user_metadata) {
-        username =
-          user.user_metadata.username ||
-          user.user_metadata.name ||
-          '';
-      }
-
-      if (!username && user.email) {
-        username = user.email.split('@')[0];
-      }
-    }
-
-    if (!username) {
-      username =
-        localStorage.getItem(
-          'channelStudio.username'
-        ) || 'Creator';
-    }
+  function showAccount(username) {
+    username = username ||
+      localStorage.getItem(USERNAME_KEY) ||
+      'Creator';
 
     const usernameElement =
       document.getElementById('accountUsername');
@@ -1015,8 +947,9 @@
         username + ' account settings'
       );
     }
+  }
 
-    // Load the existing application scripts.
+  async function loadApplication() {
     const applicationScripts = [
       'js/themes.js',
       'js/transitions.js',
@@ -1031,14 +964,99 @@
       await loadLocalScript(src);
     }
 
-    // Reveal dashboard.
     document.body.style.visibility = 'visible';
+  }
 
-    if (offlineAccess) {
-      console.info(
-        'Story Studio opened in local offline mode.'
+  try {
+    // Load local storage first.
+    await loadLocalScript('js/storage.js');
+
+    /*
+      IMPORTANT:
+      Check saved access BEFORE attempting any cloud request.
+      A previously authenticated user can open the local app
+      even when Supabase and the internet are unavailable.
+    */
+    if (hasOfflineAccess()) {
+      showAccount(
+        localStorage.getItem(USERNAME_KEY) || 'Creator'
       );
+
+      await loadApplication();
+
+      console.info(
+        'Story Studio opened using saved local access.'
+      );
+
+      return;
     }
+
+    // No saved local access: an online account check is required.
+    if (navigator.onLine === false) {
+      redirectToLogin();
+      return;
+    }
+
+    const supabaseAvailable = await loadSupabase();
+
+    if (!supabaseAvailable) {
+      redirectToLogin();
+      return;
+    }
+
+    // Load the cloud system only when online.
+    if (!window.ChannelStudioCloud) {
+      await loadLocalScript('js/supabase-cloud.js');
+    }
+
+    const cloud = window.ChannelStudioCloud;
+
+    if (!cloud) {
+      redirectToLogin();
+      return;
+    }
+
+    await waitForCloud(cloud.ready);
+
+    const user = await waitForCloud(
+      cloud.getUser(),
+      3000
+    );
+
+    if (!user || user.is_anonymous === true) {
+      redirectToLogin();
+      return;
+    }
+
+    // Save successful account access locally.
+    localStorage.setItem(OFFLINE_AUTH_KEY, '1');
+
+    let username = '';
+
+    if (typeof cloud.getUsername === 'function') {
+      username = await Promise.resolve(
+        cloud.getUsername()
+      ) || '';
+    }
+
+    if (!username && user.user_metadata) {
+      username =
+        user.user_metadata.username ||
+        user.user_metadata.name ||
+        '';
+    }
+
+    if (!username && user.email) {
+      username = user.email.split('@')[0];
+    }
+
+    username = username || 'Creator';
+
+    localStorage.setItem(USERNAME_KEY, username);
+
+    showAccount(username);
+
+    await loadApplication();
 
   } catch (error) {
     console.error(
@@ -1046,7 +1064,30 @@
       error
     );
 
+    /*
+      If the user already has saved local access,
+      do not redirect them to login because of a
+      temporary cloud or network failure.
+    */
+    if (hasOfflineAccess()) {
+      try {
+        showAccount(
+          localStorage.getItem(USERNAME_KEY) || 'Creator'
+        );
+
+        await loadApplication();
+        return;
+
+      } catch (localError) {
+        console.error(
+          'Local application startup failed:',
+          localError
+        );
+      }
+    }
+
     document.body.style.visibility = 'visible';
+    redirectToLogin();
   }
 
 })();
