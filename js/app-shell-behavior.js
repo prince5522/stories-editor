@@ -2,6 +2,7 @@
 /* =====================================================
    CHANNEL STUDIO — APP SHELL BEHAVIOUR
    Android safe area + global wallpaper restoration
+   + Android notification click routing
    Preserves the existing wallpaper database.
 ===================================================== */
 
@@ -13,6 +14,8 @@
   const WALLPAPER_KEY = 'custom-wallpaper';
   const BRIGHTNESS_KEY = 'studio_wallpaper_brightness';
 
+  let notificationListenerRegistered = false;
+
   function applyAndroidSafeArea() {
     if (
       !window.Capacitor?.isNativePlatform?.() ||
@@ -23,7 +26,6 @@
 
     document.documentElement.classList.add('native-android-shell');
 
-    // Solid background behind Android's status bar.
     if (!document.getElementById('android-status-bar-background')) {
       const statusBackground = document.createElement('div');
 
@@ -62,6 +64,102 @@
     `;
 
     document.head.appendChild(style);
+  }
+
+  /* ---------- ANDROID NOTIFICATION CLICK ---------- */
+
+  function openPlannerFromNotification(event) {
+    try {
+      const notification = event?.notification || {};
+      const extra = notification.extra || {};
+
+      // Planner reminders are intended to open Planner.
+      const requestedPage = String(
+        extra.page || 'planner.html'
+      );
+
+      // Only allow navigation to this app's Planner page.
+      const targetPage =
+        requestedPage.split('?')[0].split('#')[0];
+
+      if (targetPage !== 'planner.html') {
+        window.location.assign('planner.html');
+        return;
+      }
+
+      const targetURL = new URL(
+        'planner.html',
+        window.location.href
+      );
+
+      // Preserve the queue that generated the reminder.
+      const slot = String(extra.slot || '');
+
+      if (['morning', 'lunch', 'evening'].includes(slot)) {
+        targetURL.searchParams.set('slot', slot);
+      }
+
+      const currentPage =
+        window.location.pathname.split('/').pop();
+
+      if (
+        currentPage === 'planner.html' &&
+        window.location.search === targetURL.search
+      ) {
+        window.dispatchEvent(
+          new CustomEvent('planner:notification-opened', {
+            detail: { slot }
+          })
+        );
+        return;
+      }
+
+      window.location.assign(
+        targetURL.pathname + targetURL.search
+      );
+
+    } catch (error) {
+      console.warn(
+        'Could not open Planner from notification:',
+        error
+      );
+
+      window.location.assign('planner.html');
+    }
+  }
+
+  function registerAndroidNotificationClicks() {
+    if (notificationListenerRegistered) return;
+
+    const isAndroid =
+      window.Capacitor?.isNativePlatform?.() === true &&
+      window.Capacitor?.getPlatform?.() === 'android';
+
+    if (!isAndroid) return;
+
+    const notifications =
+      window.Capacitor?.Plugins?.LocalNotifications;
+
+    if (!notifications?.addListener) {
+      console.warn(
+        'Android notification click listener is unavailable.'
+      );
+      return;
+    }
+
+    notificationListenerRegistered = true;
+
+    notifications.addListener(
+      'localNotificationActionPerformed',
+      openPlannerFromNotification
+    ).catch(error => {
+      notificationListenerRegistered = false;
+
+      console.warn(
+        'Could not register Android notification click listener:',
+        error
+      );
+    });
   }
 
   // Restore the global wallpaper without changing its saved data.
@@ -136,9 +234,6 @@
       return;
     }
 
-    // IMPORTANT:
-    // Create the wallpaper object store when the database
-    // is first created. Do not remove or overwrite existing data.
     request.onupgradeneeded = function (event) {
       const db = event.target.result;
 
@@ -194,6 +289,7 @@
 
   function start() {
     applyAndroidSafeArea();
+    registerAndroidNotificationClicks();
     loadGlobalWallpaper();
   }
 
