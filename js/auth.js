@@ -1,3 +1,4 @@
+
 /* =========================================
    STORY STUDIO AUTHENTICATION
    Email + Password + Username
@@ -725,6 +726,40 @@
 
       updateButtonText();
 
+      // Check for a previously successful login.
+      let hasOfflineAccess = false;
+
+      try {
+        hasOfflineAccess =
+          localStorage.getItem(
+            'channelStudio.authenticated'
+          ) === '1';
+      } catch (storageError) {
+        console.warn(
+          'Could not read offline login status:',
+          storageError
+        );
+      }
+
+      const isPasswordRecovery =
+        window.location.search.includes(
+          'type=recovery'
+        ) ||
+        window.location.hash.includes(
+          'type=recovery'
+        );
+
+      // Previously logged-in users can open the app
+      // immediately when the device is offline.
+      if (
+        hasOfflineAccess &&
+        !isPasswordRecovery &&
+        navigator.onLine === false
+      ) {
+        openHome();
+        return;
+      }
+
       setLoading(true, 'Connecting…');
 
       // Wait until the shared cloud system is ready.
@@ -757,7 +792,7 @@
       if (
         session?.user &&
         !session.user.is_anonymous &&
-        !window.location.search.includes('type=recovery')
+        !isPasswordRecovery
       ) {
         rememberOfflineAccess(
           session.user.user_metadata?.username ||
@@ -770,9 +805,7 @@
       }
 
       // Password reset link.
-      if (
-        window.location.search.includes('type=recovery')
-      ) {
+      if (isPasswordRecovery) {
         setMode('recovery');
 
         showMessage(
@@ -791,13 +824,25 @@
 
       // Allow returning users to continue locally
       // when the account service is unavailable.
-      const hasOfflineAccess =
-        localStorage.getItem(
-          'channelStudio.authenticated'
-        ) === '1';
+      let hasOfflineAccess = false;
+
+      try {
+        hasOfflineAccess =
+          localStorage.getItem(
+            'channelStudio.authenticated'
+          ) === '1';
+      } catch (storageError) {
+        console.warn(
+          'Could not read offline login status:',
+          storageError
+        );
+      }
 
       const isPasswordRecovery =
         window.location.search.includes(
+          'type=recovery'
+        ) ||
+        window.location.hash.includes(
           'type=recovery'
         );
 
