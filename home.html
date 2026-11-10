@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en" data-theme="system">
 <head>
@@ -17,62 +18,106 @@
   <link rel="stylesheet" href="css/whatsapp-shell.css">
 
   <style>
-    /* =================================
-       CHANNEL STUDIO HOME REDESIGN
-    ================================= */
+    /* =========================================
+       CHANNEL STUDIO — PREMIUM DASHBOARD
+    ========================================= */
+
+    .page-content {
+      width: 100%;
+      max-width: 1250px;
+      margin-inline: auto;
+    }
 
     .home-welcome {
       position: relative;
+      isolation: isolate;
       overflow: hidden;
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: minmax(0,1fr) auto;
       align-items: center;
-      gap: 22px;
-      padding: clamp(23px, 5vw, 38px);
-      min-height: 245px;
-      border: 1px solid #ffffff80;
-      border-radius: 27px;
+      gap: 25px;
+      min-height: 250px;
+      padding: clamp(24px,5vw,42px);
+      border: 1px solid #ffffff75;
+      border-radius: 28px;
       color: #172033;
       background:
-        radial-gradient(circle at 85% 10%, #ffffffa0, transparent 27%),
-        linear-gradient(120deg, #d8fff1, #e3edff 58%, #fff0dc);
-      box-shadow: 0 18px 45px #24395a12;
+        radial-gradient(circle at 85% 12%,#ffffffb5,transparent 27%),
+        radial-gradient(circle at 5% 100%,#75e8c255,transparent 35%),
+        linear-gradient(120deg,#d9fff0,#e3edff 58%,#fff0dc);
+      box-shadow: 0 20px 50px rgba(30,55,85,.10);
     }
 
+    .home-welcome::before,
     .home-welcome::after {
       content: "";
       position: absolute;
-      width: 230px;
-      height: 230px;
-      right: 90px;
-      bottom: -160px;
-      border: 1px solid #ffffffa0;
+      z-index: -1;
+      border: 1px solid #ffffff85;
       border-radius: 50%;
       pointer-events: none;
+    }
+
+    .home-welcome::before {
+      width: 280px;
+      height: 280px;
+      right: 10%;
+      top: -210px;
+    }
+
+    .home-welcome::after {
+      width: 210px;
+      height: 210px;
+      right: 20%;
+      bottom: -165px;
     }
 
     .home-welcome-content {
       position: relative;
       z-index: 1;
-      max-width: 590px;
+      max-width: 600px;
+    }
+
+    .home-status-line {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 13px;
+      border: 1px solid #ffffffb5;
+      border-radius: 99px;
+      background: #ffffffa5;
+      color: #087c68;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 1.3px;
+    }
+
+    .home-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 0 4px #10b98122;
     }
 
     .home-welcome h1 {
-      margin: 9px 0 12px;
-      font-size: clamp(32px, 5vw, 48px);
+      margin: 15px 0 12px;
+      font-size: clamp(32px,5vw,49px);
       line-height: 1.06;
       letter-spacing: -1.8px;
+      font-weight: 950;
     }
 
     .home-welcome h1 span {
-      color: #078c76;
+      color: #078b73;
     }
 
     .home-welcome-copy {
-      max-width: 440px;
-      margin: 0 0 21px;
+      max-width: 460px;
+      margin: 0 0 23px;
       color: #53647b;
       font-size: 14px;
+      line-height: 1.75;
     }
 
     .home-brand-art {
@@ -82,81 +127,60 @@
       place-items: center;
       width: 145px;
       height: 145px;
-      flex: 0 0 145px;
-      border-radius: 42px;
-      background: linear-gradient(145deg, #0bc49a, #087dce 70%, #625be8);
+      border: 1px solid #ffffff70;
+      border-radius: 39px;
+      background: linear-gradient(145deg,#0bc49a,#087dce 70%,#625be8);
       box-shadow: 0 22px 45px #087dce35;
       transform: rotate(5deg);
     }
 
-    .home-brand-art:before {
+    .home-brand-art::before {
       content: "";
       position: absolute;
       inset: 9px;
-      border: 1px solid #ffffff65;
-      border-radius: 34px;
+      border: 1px solid #ffffff70;
+      border-radius: 30px;
     }
 
     .home-brand-letters {
-      color: white;
+      color: #fff;
       font-size: 48px;
       font-weight: 950;
       letter-spacing: -5px;
-      text-shadow: 0 5px 15px #003c4c44;
+      text-shadow: 0 5px 15px #003c4c55;
     }
 
     .home-brand-caption {
       position: absolute;
       bottom: 19px;
-      color: #ffffffd9;
+      color: #ffffffdf;
       font-size: 8px;
       font-weight: 900;
       letter-spacing: 2px;
     }
 
-    .home-status-line {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 7px 11px;
-      margin-bottom: 5px;
-      border: 1px solid #ffffffb8;
-      border-radius: 99px;
-      background: #ffffffa0;
-      color: #087d68;
-      font-size: 10px;
-      font-weight: 900;
-      letter-spacing: 1.2px;
-    }
-
-    .home-status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #10b981;
-      box-shadow: 0 0 0 4px #10b98120;
-    }
-
     .home-stats {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 13px;
-      margin: 19px 0;
+      grid-template-columns: repeat(3,minmax(0,1fr));
+      gap: 14px;
+      margin: 20px 0;
     }
 
     .home-stat {
       position: relative;
       overflow: hidden;
-      padding: 18px;
-      border: 1px solid var(--line, #e4e9f2);
-      border-radius: 19px;
-      background: var(--panel, #fff);
-      transition: transform .2s, box-shadow .2s;
+      min-width: 0;
+      padding: 19px;
+      border: 1px solid var(--line,#e4e9f2);
+      border-radius: 22px;
+      background: var(--panel,#fff);
+      box-shadow: 0 12px 35px rgba(20,35,55,.07);
+      transition: transform .2s ease,box-shadow .2s ease;
     }
 
     .home-stat:hover {
       transform: translateY(-3px);
-      box-shadow: 0 12px 25px #1720330c;
+      box-shadow: 0 17px 35px rgba(20,35,55,.11);
     }
 
     .home-stat-top {
@@ -170,12 +194,12 @@
     .home-stat-icon {
       display: grid;
       place-items: center;
-      width: 39px;
-      height: 39px;
-      border-radius: 13px;
-      font-size: 19px;
-      background: #e6fff6;
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      background: #e5fff5;
       color: #078c76;
+      font-size: 20px;
     }
 
     .home-stat:nth-child(2) .home-stat-icon {
@@ -190,10 +214,10 @@
 
     .home-stat strong {
       display: block;
-      font-size: 29px;
-      line-height: 1.1;
-      font-weight: 900;
-      color: var(--text, #172033);
+      color: var(--text,#172033);
+      font-size: 30px;
+      line-height: 1.15;
+      font-weight: 950;
     }
 
     .home-stat p {
@@ -202,40 +226,43 @@
     }
 
     .home-section {
-      margin-top: 20px;
-      padding: 21px;
-      border: 1px solid var(--line, #e4e9f2);
-      border-radius: 21px;
-      background: var(--panel, #fff);
+      margin-top: 21px;
+      padding: 23px;
+      border: 1px solid var(--line,#e4e9f2);
+      border-radius: 22px;
+      background: var(--panel,#fff);
+      box-shadow: 0 12px 35px rgba(20,35,55,.07);
     }
 
     .home-section-heading {
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
       gap: 12px;
-      margin-bottom: 17px;
+      margin-bottom: 18px;
     }
 
     .home-section-heading h2 {
       margin: 0;
       font-size: 20px;
+      font-weight: 850;
       letter-spacing: -.5px;
     }
 
     .home-section-heading .eyebrow {
-      margin-bottom: 4px;
+      margin-bottom: 5px;
     }
 
     .home-section-heading .text-link {
       white-space: nowrap;
       font-size: 12px;
+      font-weight: 800;
     }
 
     .home-quick-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(3,minmax(0,1fr));
+      gap: 13px;
     }
 
     .home-quick-card {
@@ -245,47 +272,48 @@
       align-items: flex-start;
       min-width: 0;
       min-height: 145px;
-      padding: 17px;
-      border: 1px solid var(--line, #e4e9f2);
-      border-radius: 17px;
-      background: var(--bg, #f8fafc);
-      transition: transform .2s, border-color .2s, box-shadow .2s;
+      padding: 18px;
+      border: 1px solid var(--line,#e4e9f2);
+      border-radius: 19px;
+      background: var(--bg,#f8fafc);
+      text-decoration: none;
+      transition: transform .2s ease,border-color .2s ease,box-shadow .2s ease;
     }
 
     .home-quick-card:hover {
-      transform: translateY(-3px);
-      border-color: #0bc49a88;
-      box-shadow: 0 10px 25px #0bc49a13;
+      transform: translateY(-4px);
+      border-color: #0bc49a99;
+      box-shadow: 0 13px 28px #0bc49a18;
     }
 
     .home-quick-icon {
       display: grid;
       place-items: center;
-      width: 43px;
-      height: 43px;
+      width: 44px;
+      height: 44px;
       margin-bottom: 13px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, #e1fff4, #e8efff);
+      border-radius: 15px;
+      background: linear-gradient(135deg,#e1fff4,#e8efff);
       font-size: 22px;
     }
 
     .home-quick-card b {
-      color: var(--text, #172033);
+      color: var(--text,#172033);
       font-size: 13px;
-      line-height: 1.35;
+      line-height: 1.4;
     }
 
     .home-quick-card small {
       margin-top: 5px;
-      color: var(--muted, #667085);
+      color: var(--muted,#667085);
       font-size: 11px;
     }
 
     .home-quick-arrow {
       position: absolute;
       top: 15px;
-      right: 14px;
-      color: #0ba98a;
+      right: 15px;
+      color: #0ba987;
       font-weight: 900;
     }
 
@@ -293,48 +321,47 @@
       position: relative;
       overflow: hidden;
       background:
-        radial-gradient(circle at 100% 0%, #0bc49a16, transparent 40%),
-        var(--panel, #fff);
+        radial-gradient(circle at 100% 0%,#0bc49a18,transparent 40%),
+        var(--panel,#fff);
     }
 
     .home-creator-label {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 10px;
+      padding: 7px 11px;
       border-radius: 99px;
       background: #e7faf5;
       color: #087d68;
       font-size: 10px;
-      font-weight: 850;
+      font-weight: 900;
     }
 
     .home-creator .caption-result {
-      border-radius: 15px;
-      line-height: 1.6;
+      border-radius: 16px;
+      line-height: 1.7;
     }
 
     .home-footer-brand {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 7px;
-      font-weight: 850;
+      gap: 8px;
+      font-weight: 900;
     }
 
     .home-footer-mark {
       display: inline-grid;
       place-items: center;
-      width: 23px;
-      height: 23px;
-      border-radius: 8px;
-      background: linear-gradient(135deg, #0bc49a, #2879f0);
-      color: white;
+      width: 25px;
+      height: 25px;
+      border-radius: 9px;
+      background: linear-gradient(135deg,#0bc49a,#2879f0);
+      color: #fff;
       font-size: 9px;
       font-weight: 950;
     }
 
-    /* Account identity */
     .account-identity {
       display: flex;
       align-items: center;
@@ -347,7 +374,7 @@
     .account-username {
       max-width: 125px;
       overflow: hidden;
-      color: var(--text, #172033);
+      color: var(--text,#172033);
       font-size: 12px;
       font-weight: 800;
       text-overflow: ellipsis;
@@ -360,11 +387,11 @@
 
     /* Dark theme */
     body[data-theme="dark"] .home-welcome {
-      background:
-        radial-gradient(circle at 85% 10%, #ffffff12, transparent 30%),
-        linear-gradient(120deg, #163e3a, #1b3157 60%, #49331e);
-      border-color: #35465d;
       color: #f1f5fb;
+      border-color: #35465d;
+      background:
+        radial-gradient(circle at 85% 10%,#ffffff12,transparent 30%),
+        linear-gradient(120deg,#163e3a,#1b3157 60%,#49331e);
     }
 
     body[data-theme="dark"] .home-welcome h1 span {
@@ -376,66 +403,62 @@
     }
 
     body[data-theme="dark"] .home-status-line {
+      color: #8cf0d8;
       background: #202d41;
       border-color: #35465d;
-      color: #8cf0d8;
-    }
-
-    body[data-theme="dark"] .home-stat {
-      background: var(--panel, #182235);
     }
 
     body[data-theme="dark"] .home-stat-icon {
-      background: #173d3a;
       color: #8cf0d8;
+      background: #173d3a;
     }
 
     body[data-theme="dark"] .home-stat:nth-child(2) .home-stat-icon {
-      background: #1c3152;
       color: #a9c3ff;
+      background: #1c3152;
     }
 
     body[data-theme="dark"] .home-stat:nth-child(3) .home-stat-icon {
-      background: #49331e;
       color: #ffcc8a;
+      background: #49331e;
     }
 
     body[data-theme="dark"] .home-quick-card {
-      background: #142033;
-      border-color: #35465d;
+      background: var(--bg,#142033);
     }
 
     body[data-theme="dark"] .home-quick-icon {
-      background: linear-gradient(135deg, #173d3a, #1c3152);
-    }
-
-    body[data-theme="dark"] .home-creator {
-      background:
-        radial-gradient(circle at 100% 0%, #0bc49a20, transparent 40%),
-        var(--panel, #182235);
+      background: linear-gradient(135deg,#173d3a,#1c3152);
     }
 
     body[data-theme="dark"] .home-creator-label {
-      background: #173d3a;
       color: #8cf0d8;
+      background: #173d3a;
     }
 
-    @media (max-width: 650px) {
+    /* Tablet */
+    @media (max-width:800px) {
+      .home-quick-grid {
+        grid-template-columns: repeat(2,minmax(0,1fr));
+      }
+    }
+
+    /* Mobile */
+    @media (max-width:650px) {
       .home-welcome {
         min-height: 205px;
-        gap: 10px;
+        gap: 12px;
         padding: 21px;
-        border-radius: 22px;
+        border-radius: 23px;
       }
 
       .home-brand-art {
-        width: 85px;
-        height: 85px;
-        flex-basis: 85px;
+        width: 88px;
+        height: 88px;
         border-radius: 25px;
       }
 
-      .home-brand-art:before {
+      .home-brand-art::before {
         inset: 6px;
         border-radius: 19px;
       }
@@ -452,7 +475,7 @@
       }
 
       .home-welcome h1 {
-        font-size: clamp(27px, 7vw, 37px);
+        font-size: clamp(27px,7vw,37px);
         letter-spacing: -1px;
       }
 
@@ -466,7 +489,7 @@
 
       .home-stat {
         padding: 12px;
-        border-radius: 15px;
+        border-radius: 16px;
       }
 
       .home-stat strong {
@@ -478,19 +501,21 @@
       }
 
       .home-stat-icon {
-        width: 33px;
-        height: 33px;
+        width: 34px;
+        height: 34px;
         font-size: 16px;
-        border-radius: 11px;
       }
 
       .home-section {
         padding: 16px;
-        border-radius: 18px;
+        border-radius: 19px;
+      }
+
+      .home-section-heading h2 {
+        font-size: 18px;
       }
 
       .home-quick-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 9px;
       }
 
@@ -499,32 +524,27 @@
         padding: 13px;
       }
 
-      .home-section-heading h2 {
-        font-size: 18px;
-      }
-
       .account-username {
         max-width: 90px;
       }
     }
 
-    @media (max-width: 370px) {
+    @media (max-width:370px) {
       .home-welcome {
         grid-template-columns: 1fr;
       }
 
       .home-brand-art {
         position: absolute;
-        right: 17px;
         top: 17px;
+        right: 17px;
         width: 58px;
         height: 58px;
-        min-width: 58px;
         border-radius: 18px;
         opacity: .9;
       }
 
-      .home-brand-art:before {
+      .home-brand-art::before {
         inset: 4px;
         border-radius: 14px;
       }
@@ -539,6 +559,13 @@
 
       .home-welcome-content {
         padding-top: 5px;
+      }
+    }
+
+    @media (prefers-reduced-motion:reduce) {
+      .home-stat,
+      .home-quick-card {
+        transition: none;
       }
     }
   </style>
@@ -604,9 +631,8 @@
 
     <main class="page-content page-enter">
 
-      <!-- WELCOME / BRAND HERO -->
+      <!-- WELCOME -->
       <section class="home-welcome tilt-card">
-
         <div class="home-welcome-content">
           <div class="home-status-line">
             <span class="home-status-dot"></span>
@@ -629,7 +655,6 @@
           <span class="home-brand-letters">CS</span>
           <span class="home-brand-caption">CHANNEL STUDIO</span>
         </div>
-
       </section>
 
       <!-- STATISTICS -->
@@ -666,7 +691,6 @@
 
       <!-- UPCOMING TASKS -->
       <section class="home-section">
-
         <div class="home-section-heading">
           <div>
             <p class="eyebrow">YOUR DAY</p>
@@ -681,12 +705,10 @@
             No tasks yet. Add your first posting reminder in Planner.
           </div>
         </div>
-
       </section>
 
       <!-- QUICK ACTIONS -->
       <section class="home-section">
-
         <div class="home-section-heading">
           <div>
             <p class="eyebrow">QUICK START</p>
@@ -743,7 +765,6 @@
 
       <!-- CAPTION SPARK -->
       <section class="home-section home-creator creator-lab">
-
         <div class="home-section-heading">
           <div>
             <p class="eyebrow">YOUR CREATIVE CORNER</p>
@@ -785,7 +806,6 @@
         </div>
 
         <p class="small muted" id="captionPrompt"></p>
-
       </section>
 
     </main>
@@ -816,13 +836,11 @@
     window.location.replace(loginPage);
   }
 
-  // Load local application files.
   function loadLocalScript(src) {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
 
       script.src = src;
-
       script.onload = resolve;
 
       script.onerror = () => {
@@ -833,7 +851,6 @@
     });
   }
 
-  // Attempt to load Supabase, but never wait indefinitely.
   function loadSupabase() {
     return new Promise(resolve => {
       if (window.supabase?.createClient) {
@@ -847,7 +864,6 @@
       }
 
       const script = document.createElement('script');
-
       let finished = false;
 
       const finish = result => {
@@ -877,7 +893,6 @@
     });
   }
 
-  // Limit cloud waits so local access remains available.
   async function waitForCloud(promise, timeoutMs = 4000) {
     if (!promise) return null;
 
@@ -890,13 +905,13 @@
   }
 
   try {
-    // 1. Load local storage first.
+    // Load local storage first.
     await loadLocalScript('js/storage.js');
 
-    // 2. Try to load the Supabase library.
+    // Try to load Supabase.
     const supabaseAvailable = await loadSupabase();
 
-    // 3. Start the cloud system only when Supabase is ready.
+    // Start cloud system only when Supabase is ready.
     if (
       supabaseAvailable &&
       !window.ChannelStudioCloud
@@ -909,7 +924,7 @@
     let user = null;
     let registeredUser = false;
 
-    // 4. Check the registered account when online.
+    // Check registered account when possible.
     if (cloud && supabaseAvailable) {
       try {
         await waitForCloud(cloud.ready);
@@ -930,7 +945,7 @@
       }
     }
 
-    // 5. Allow a previously logged-in user to continue locally.
+    // Allow previously logged-in users to continue locally.
     const offlineAccess =
       !registeredUser &&
       localStorage.getItem(OFFLINE_AUTH_KEY) === '1';
@@ -940,7 +955,7 @@
       return;
     }
 
-    // 6. Restore account username.
+    // Restore account username.
     let username = '';
 
     if (registeredUser) {
@@ -1001,7 +1016,7 @@
       );
     }
 
-    // 7. Load the main application scripts.
+    // Load the existing application scripts.
     const applicationScripts = [
       'js/themes.js',
       'js/transitions.js',
@@ -1016,7 +1031,7 @@
       await loadLocalScript(src);
     }
 
-    // 8. Reveal the dashboard.
+    // Reveal dashboard.
     document.body.style.visibility = 'visible';
 
     if (offlineAccess) {
@@ -1036,3 +1051,6 @@
 
 })();
 </script>
+
+</body>
+</html>
