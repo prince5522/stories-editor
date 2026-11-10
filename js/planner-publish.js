@@ -278,24 +278,32 @@ function openChannel(url) {
     return false;
   }
 
-  const opened = window.open(url, '_blank');
+  try {
+    const opened = window.open(url, '_blank');
 
-  if (!opened) {
+    if (!opened) {
+      window.studioToast?.(
+        'If WhatsApp did not open, use your channel link manually.'
+      );
+    }
+
+    return !!opened;
+  } catch (error) {
+    console.warn('Could not open WhatsApp:', error);
+
     window.studioToast?.(
-      'If WhatsApp did not open, use your channel link manually.'
+      'WhatsApp could not be opened automatically. Use your saved channel link.'
     );
-  }
 
-  return true;
+    return false;
+  }
 }
 
 /*
-  IMPORTANT:
-  Try document.execCommand('copy') synchronously
-  during the original button click.
-
-  This avoids losing the browser's user-gesture
-  permission before WhatsApp is opened.
+  Start the clipboard operation immediately during
+  the original button click. Do not await it before
+  opening WhatsApp, because Android browsers can
+  lose the temporary permission to open a new tab.
 */
 
 function copyText(text) {
@@ -339,24 +347,29 @@ function copyText(text) {
 
   if (copied) return true;
 
-  // Fallback for browsers where execCommand is unavailable.
   if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(value)
-      .then(() => true)
-      .catch(error => {
-        console.warn('Clipboard API failed:', error);
-        return false;
-      });
+    try {
+      return navigator.clipboard.writeText(value)
+        .then(() => true)
+        .catch(error => {
+          console.warn('Clipboard API failed:', error);
+          return false;
+        });
+    } catch (error) {
+      console.warn('Clipboard API could not start:', error);
+    }
   }
 
   return false;
 }
 
-async function finishCopy(text) {
-  let result = copyText(text);
-
+async function finishCopy(result) {
   if (result && typeof result.then === 'function') {
-    result = await result;
+    try {
+      result = await result;
+    } catch (_) {
+      result = false;
+    }
   }
 
   return result === true;
@@ -454,8 +467,16 @@ async function startAdvertisement(slotName) {
 
   setPending(slotName, 'advert-opened', ep);
 
-  // Copy first, before leaving Story Studio.
-  const copied = await finishCopy(advert);
+  // Begin copying synchronously from the button tap.
+  const copyResult = copyText(advert);
+
+  // Open the selected channel immediately, without
+  // waiting for an asynchronous clipboard response.
+  openChannel(slot.channelUrl);
+
+  renderPostingControls();
+
+  const copied = await finishCopy(copyResult);
 
   if (!copied) {
     window.prompt(
@@ -463,11 +484,6 @@ async function startAdvertisement(slotName) {
       advert
     );
   }
-
-  // Open WhatsApp only after the clipboard attempt.
-  openChannel(slot.channelUrl);
-
-  renderPostingControls();
 
   window.studioToast?.(
     copied
@@ -520,8 +536,16 @@ async function prepareEpisode(slotName) {
 
   saveSettings();
 
-  // Copy the complete episode before opening WhatsApp.
-  const copied = await finishCopy(text);
+  // Begin copying the exact episode text immediately.
+  const copyResult = copyText(text);
+
+  // Open the same channel immediately after starting
+  // the copy operation. Do not wait for a Promise.
+  openChannel(slot.channelUrl);
+
+  renderPostingControls();
+
+  const copied = await finishCopy(copyResult);
 
   if (!copied) {
     window.prompt(
@@ -529,10 +553,6 @@ async function prepareEpisode(slotName) {
       text
     );
   }
-
-  openChannel(slot.channelUrl);
-
-  renderPostingControls();
 
   window.studioToast?.(
     copied
