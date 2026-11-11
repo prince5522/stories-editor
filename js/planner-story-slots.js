@@ -1,3 +1,4 @@
+
 (function () {
 'use strict';
 
@@ -65,34 +66,68 @@ function normalName(value) {
   return cleanName(value).toLowerCase().replace(/\s+/g, ' ');
 }
 
+/*
+ * IMPORTANT:
+ * Preserve every existing Planner setting.
+ * Only add missing defaults and normalize the three known slots.
+ * Unknown properties such as slotRuns and future settings are retained.
+ */
 function getSettings() {
   const old = read(KEY, {});
-  const result = clone(DEFAULTS);
 
-  if (old && typeof old === 'object') {
-    result.adText = old.adText || '';
-    result.mediaId = old.mediaId || '';
-    result.completed = old.completed || {};
-    result.pending = old.pending || null;
-    result.lastRun = old.lastRun || {};
+  const saved = old &&
+    typeof old === 'object' &&
+    !Array.isArray(old)
+      ? old
+      : {};
 
-    SLOT_NAMES.forEach(name => {
-      const previous = old.slots && old.slots[name];
-      if (!previous) return;
+  const result = {
+    ...clone(DEFAULTS),
+    ...saved,
 
-      result.slots[name] = {
-        ...result.slots[name],
-        ...previous,
-        time: previous.time || result.slots[name].time,
-        type: previous.type || result.slots[name].type,
-        storyId: previous.storyId || '',
-        storyName: previous.storyName || previous.title || '',
-        channelUrl: previous.channelUrl || '',
-        season: Number(previous.season || previous.seasonNumber || 1),
-        episode: Number(previous.episode || previous.episodeNumber || 1)
-      };
-    });
-  }
+    slots: {
+      ...clone(DEFAULTS.slots),
+      ...(saved.slots && typeof saved.slots === 'object'
+        ? saved.slots
+        : {})
+    }
+  };
+
+  result.completed =
+    saved.completed && typeof saved.completed === 'object'
+      ? saved.completed
+      : {};
+
+  result.pending =
+    Object.prototype.hasOwnProperty.call(saved, 'pending')
+      ? saved.pending
+      : null;
+
+  result.lastRun =
+    saved.lastRun && typeof saved.lastRun === 'object'
+      ? saved.lastRun
+      : {};
+
+  SLOT_NAMES.forEach(name => {
+    const previous =
+      saved.slots &&
+      typeof saved.slots === 'object'
+        ? saved.slots[name]
+        : null;
+
+    result.slots[name] = {
+      ...clone(DEFAULTS.slots[name]),
+      ...(previous && typeof previous === 'object' ? previous : {}),
+
+      time: previous?.time || DEFAULTS.slots[name].time,
+      type: previous?.type || DEFAULTS.slots[name].type,
+      storyId: previous?.storyId || '',
+      storyName: previous?.storyName || previous?.title || '',
+      channelUrl: previous?.channelUrl || '',
+      season: Number(previous?.season || previous?.seasonNumber || 1),
+      episode: Number(previous?.episode || previous?.episodeNumber || 1)
+    };
+  });
 
   return result;
 }
@@ -103,6 +138,7 @@ function saveSettings() {
 
 function getSerialEpisodes() {
   const episodes = read('episodes', []);
+
   return Array.isArray(episodes) ? episodes.filter(ep =>
     ep && !ep.archived && cleanName(ep.storyTitle || ep.seasonTitle)
   ) : [];
@@ -117,6 +153,7 @@ function getSerialStoryOptions() {
     stories.forEach(story => {
       const name = cleanName(story.title || story.storyTitle || story.story_name);
       if (!name) return;
+
       const key = normalName(name);
       if (!found.has(key)) found.set(key, name);
     });
@@ -125,6 +162,7 @@ function getSerialStoryOptions() {
   episodes.forEach(ep => {
     const name = cleanName(ep.storyTitle || ep.seasonTitle);
     if (!name) return;
+
     const key = normalName(name);
     if (!found.has(key)) found.set(key, name);
   });
@@ -143,6 +181,7 @@ function getReadyStoryOptions() {
   getReadyEpisodes().forEach(ep => {
     const name = cleanName(ep.story_title || ep.storyName || ep.title || 'Ready-made episodes');
     const key = normalName(name);
+
     if (!found.has(key)) found.set(key, name);
   });
 
@@ -151,6 +190,7 @@ function getReadyStoryOptions() {
 
 function getChannels() {
   const items = read('channels', []);
+
   return Array.isArray(items) ? items.filter(channel =>
     channel && cleanName(channel.url)
   ) : [];
@@ -168,10 +208,13 @@ function buildStorySelect(name) {
   const slot = selectedSlot(name);
   const options = getStoryOptions(slot.type);
   const select = $(name + 'Story');
+
   if (!select) return;
 
   const previous = slot.storyName || '';
-  const exists = options.some(item => normalName(item) === normalName(previous));
+  const exists = options.some(item =>
+    normalName(item) === normalName(previous)
+  );
 
   select.innerHTML =
     '<option value="">Choose a story...</option>' +
@@ -180,7 +223,9 @@ function buildStorySelect(name) {
     ).join('');
 
   if (exists) {
-    select.value = options.find(item => normalName(item) === normalName(previous));
+    select.value = options.find(item =>
+      normalName(item) === normalName(previous)
+    );
   } else {
     select.value = '';
   }
@@ -189,6 +234,7 @@ function buildStorySelect(name) {
 function buildChannelSelect(name) {
   const slot = selectedSlot(name);
   const select = $(name + 'Channel');
+
   if (!select) return;
 
   select.innerHTML =
@@ -251,13 +297,17 @@ function collectSlot(name) {
 function updateSummary(name) {
   const slot = collectSlot(name);
   const summary = $(name + 'Summary');
+
   if (!summary) return;
 
   const story = slot.storyName
     ? esc(slot.storyName)
     : 'No story selected';
 
-  const channel = channels.find(item => item.url === slot.channelUrl);
+  const channel = channels.find(item =>
+    item.url === slot.channelUrl
+  );
+
   const channelName = channel
     ? esc(channel.name || channel.title || channel.url)
     : 'No channel selected';
@@ -276,10 +326,16 @@ function saveAdvertisement() {
   settings.mediaId = $('taskMediaSelect')?.value || '';
 
   const ok = saveSettings();
+
   $('plannerSaveStatus').textContent = ok
     ? 'Advertisement settings saved.'
     : 'Could not save settings. Check available device storage.';
-  window.studioToast?.(ok ? 'Advertisement settings saved.' : 'Could not save advertisement settings.');
+
+  window.studioToast?.(
+    ok
+      ? 'Advertisement settings saved.'
+      : 'Could not save advertisement settings.'
+  );
 }
 
 function saveAllSlots() {
@@ -300,13 +356,16 @@ function saveAllSlots() {
 
   renderSetupStatus();
 
-  window.studioToast?.(ok
-    ? 'Your three posting queues have been saved. ✅'
-    : 'Could not save your Planner settings.');
+  window.studioToast?.(
+    ok
+      ? 'Your three posting queues have been saved. ✅'
+      : 'Could not save your Planner settings.'
+  );
 }
 
 function renderSetupStatus() {
   const target = $('plannerSetupStatus');
+
   if (!target) return;
 
   target.innerHTML = SLOT_NAMES.map(name => {
@@ -337,6 +396,7 @@ function renderSetupStatus() {
 
 function refreshStoryOptions(name) {
   const type = $(name + 'Type').value === 'ready' ? 'ready' : 'serial';
+
   settings.slots[name].type = type;
   settings.slots[name].storyName = '';
 
@@ -372,8 +432,13 @@ function bindEvents() {
 function init() {
   if (!store()) {
     console.error('Planner could not start: StudioStore is unavailable.');
+
     const target = $('plannerSetupStatus');
-    if (target) target.textContent = 'Storage is not ready. Refresh the page and try again.';
+
+    if (target) {
+      target.textContent = 'Storage is not ready. Refresh the page and try again.';
+    }
+
     return;
   }
 
