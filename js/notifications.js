@@ -22,6 +22,22 @@ function store() {
   return window.StudioStore;
 }
 
+/*
+ * Android has its own native reminder scheduler in
+ * native-notifications.js. Do not run the browser
+ * Planner reminder engine inside the Android app.
+ */
+function isAndroidNativeApp() {
+  try {
+    return !!(
+      window.Capacitor?.isNativePlatform?.() &&
+      window.Capacitor?.getPlatform?.() === 'android'
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
 function enabled() {
   return store()
     ? store().get('notificationToneEnabled', true)
@@ -172,7 +188,6 @@ async function send(title, body, options = {}) {
     notification.onclick = () => {
       try {
         window.focus();
-
         window.location.href = destination;
       } catch (_) {}
 
@@ -262,6 +277,13 @@ function completedToday(settings, slotName) {
 /* ---------- PLANNER REMINDERS ---------- */
 
 async function checkPlannerReminders() {
+  /*
+   * Android native reminders are managed by
+   * native-notifications.js. This prevents the
+   * browser engine from sending duplicate reminders.
+   */
+  if (isAndroidNativeApp()) return;
+
   if (checking || !store()) return;
 
   checking = true;
@@ -279,25 +301,24 @@ async function checkPlannerReminders() {
     for (const slotName of SLOT_NAMES) {
       const slot = settings.slots[slotName];
 
-      if (!slot ||
-          !slot.time ||
-          !slot.storyName ||
-          !slot.channelUrl) {
+      if (
+        !slot ||
+        !slot.time ||
+        !slot.storyName ||
+        !slot.channelUrl
+      ) {
         continue;
       }
 
       const scheduled = timeToMinutes(slot.time);
 
       if (scheduled === null) continue;
-
       if (now < scheduled) continue;
-
       if (completedToday(settings, slotName)) continue;
 
       const reminderId = today + '-' + slotName;
 
       if (log[reminderId]) continue;
-
       if (inFlight.has(reminderId)) continue;
 
       inFlight.add(reminderId);
@@ -358,6 +379,19 @@ async function checkPlannerReminders() {
 /* ---------- REMINDER ENGINE ---------- */
 
 function startPlannerReminders() {
+  /*
+   * Native Android reminder scheduling is handled
+   * separately. Do not start a second timer here.
+   */
+  if (isAndroidNativeApp()) {
+    if (reminderTimer) {
+      clearInterval(reminderTimer);
+      reminderTimer = null;
+    }
+
+    return;
+  }
+
   if (reminderTimer) return;
 
   checkPlannerReminders();
@@ -370,6 +404,8 @@ function startPlannerReminders() {
 /* ---------- APP RETURN ---------- */
 
 function handleAppReturn() {
+  if (isAndroidNativeApp()) return;
+
   checkPlannerReminders();
 }
 
@@ -398,7 +434,9 @@ function init() {
   startPlannerReminders();
 
   console.log(
-    'Channel Studio notification engine loaded successfully.'
+    isAndroidNativeApp()
+      ? 'Channel Studio: Android native reminders are active; browser Planner reminders are disabled.'
+      : 'Channel Studio notification engine loaded successfully.'
   );
 }
 
