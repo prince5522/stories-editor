@@ -1,6 +1,7 @@
+
 /* =====================================================
    STORY STUDIO — PLANNER PUBLISHING ENGINE
-   Complete publishing workflow
+   Silent WhatsApp return workflow
    Advertisement → WhatsApp → Episode → WhatsApp
    Includes clipboard-first publishing and queue tracking.
 ===================================================== */
@@ -673,10 +674,6 @@ function completeEpisodeOnReturn(slotName) {
 
   saveSettings();
 
-  window.studioToast?.(
-    'Your publication was confirmed. Queue advanced. ✅'
-  );
-
   document.dispatchEvent(
     new Event('planner:posts-updated')
   );
@@ -684,62 +681,30 @@ function completeEpisodeOnReturn(slotName) {
   return true;
 }
 
-/* ---------- RETURN FLOW ---------- */
+/* ---------- SILENT RETURN FLOW ---------- */
 
 function advanceAfterReturn() {
   const pending = settings.pending;
 
   if (!pending) return;
 
+  pending.leftAppAt = null;
+  pending.returnPrompted = true;
+
+  // Returning after WhatsApp advertisement:
+  // unlock the episode without asking anything.
   if (pending.stage === 'advert-opened') {
-    const published = window.confirm(
-      'Did you publish the advertisement in your WhatsApp Channel?\n\n' +
-      'Choose OK only if it was actually published. Choose Cancel to keep this stage open.'
-    );
-
-    pending.leftAppAt = null;
-    pending.returnPrompted = false;
-
-    if (published) {
-      pending.stage = 'advert-confirmed';
-      saveSettings();
-
-      window.studioToast?.(
-        'Advertisement confirmed. Your episode is ready to prepare. 📖'
-      );
-    } else {
-      saveSettings();
-
-      window.studioToast?.(
-        'Advertisement not confirmed. Your posting sequence is still open.'
-      );
-    }
-
+    pending.stage = 'advert-confirmed';
+    saveSettings();
     renderPostingControls();
     return;
   }
 
+  // Returning after WhatsApp episode:
+  // automatically record the episode and advance.
   if (pending.stage === 'episode-opened') {
-    const published = window.confirm(
-      'Did you publish this episode in your WhatsApp Channel?\n\n' +
-      'Choose OK only if it was actually published. Choose Cancel to keep the episode available.'
-    );
-
-    pending.leftAppAt = null;
-    pending.returnPrompted = false;
-
-    if (published) {
-      saveSettings();
-      completeEpisodeOnReturn(pending.slot);
-    } else {
-      pending.stage = 'advert-confirmed';
-      saveSettings();
-
-      window.studioToast?.(
-        'Episode not marked as posted. You can prepare and publish it again.'
-      );
-    }
-
+    saveSettings();
+    completeEpisodeOnReturn(pending.slot);
     renderPostingControls();
   }
 }
@@ -789,11 +754,11 @@ function renderRecoveryPanel() {
 
   const stageNames = {
     'advert-opened':
-      'Advertisement stage — awaiting your confirmation',
+      'Advertisement stage — return to Story Studio to continue',
     'advert-confirmed':
       'Advertisement confirmed — episode ready',
     'episode-opened':
-      'Episode stage — awaiting your confirmation'
+      'Episode stage — return to Story Studio to advance the queue'
   };
 
   panel.style.display = 'block';
@@ -973,7 +938,7 @@ function renderPostingControls() {
         <p><strong>📢 Advertisement stage</strong></p>
         <p class="small muted">
           Publish the advert in WhatsApp, then return here.
-          You will be asked to confirm before the episode unlocks.
+          The episode will unlock automatically when you return.
         </p>
         <button type="button"
           class="button ghost"
@@ -1018,7 +983,7 @@ function renderPostingControls() {
         </p>
         <p class="small muted">
           Return to Story Studio after WhatsApp.
-          You will be asked to confirm publication before the queue advances.
+          The queue will advance automatically when you return.
         </p>
         <button type="button"
           class="button ghost"
