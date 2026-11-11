@@ -13,6 +13,7 @@ const KEY = 'storySlotPlannerV1';
 const $ = id => document.getElementById(id);
 const store = () => window.StudioStore;
 const SLOT_NAMES = ['morning', 'lunch', 'evening'];
+const WHATSAPP_LAUNCH_WINDOW_MS = 90000;
 
 let settings = null;
 let returnCheckLock = false;
@@ -278,6 +279,25 @@ function openChannel(url) {
     return false;
   }
 
+  /*
+   * Record that Story Studio requested WhatsApp to open.
+   * A later app departure is accepted only if it happens
+   * shortly after this request.
+   */
+  settings = readSettings();
+
+  if (
+    settings.pending &&
+    ['advert-opened', 'episode-opened'].includes(
+      settings.pending.stage
+    )
+  ) {
+    settings.pending.launchRequestedAt = Date.now();
+    settings.pending.leftAppAt = null;
+    settings.pending.returnPrompted = false;
+    saveSettings();
+  }
+
   try {
     const opened = window.open(url, '_blank');
 
@@ -394,6 +414,7 @@ function setPending(slotName, stage, ep) {
       settings.slots[slotName].type
     ),
     startedAt: new Date().toISOString(),
+    launchRequestedAt: null,
     leftAppAt: null,
     returnPrompted: false
   };
@@ -521,6 +542,7 @@ async function prepareEpisode(slotName) {
 
   pending.stage = 'episode-opened';
   pending.episodeLabel = episodeLabel(ep, slot.type);
+  pending.launchRequestedAt = null;
   pending.leftAppAt = null;
   pending.returnPrompted = false;
 
@@ -655,7 +677,7 @@ function completeEpisodeOnReturn(slotName) {
       label: episodeLabel(ep, slot.type),
       title: slot.storyName,
       completedAt,
-      tracking: 'user-confirmed-whatsapp'
+      tracking: 'whatsapp-return-detected'
     });
   }
 
@@ -689,6 +711,7 @@ function advanceAfterReturn() {
   if (!pending) return;
 
   pending.leftAppAt = null;
+  pending.launchRequestedAt = null;
   pending.returnPrompted = true;
 
   // Returning after WhatsApp advertisement:
@@ -1071,15 +1094,30 @@ function bindEvents() {
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      const pending = settings?.pending;
+      /*
+       * Only accept a departure if WhatsApp was requested
+       * recently by this posting workflow.
+       */
+      settings = readSettings();
+
+      const pending = settings.pending;
+      const launchTime = Number(
+        pending?.launchRequestedAt || 0
+      );
+
+      const launchAge = Date.now() - launchTime;
 
       if (
         pending &&
         ['advert-opened', 'episode-opened'].includes(
           pending.stage
-        )
+        ) &&
+        launchTime > 0 &&
+        launchAge >= 0 &&
+        launchAge <= WHATSAPP_LAUNCH_WINDOW_MS
       ) {
         pending.leftAppAt = Date.now();
+        pending.launchRequestedAt = null;
         pending.returnPrompted = false;
         saveSettings();
       }
